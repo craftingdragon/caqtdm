@@ -46,6 +46,8 @@ private slots:
 
     void pluginNameIsInternal();
     void addMonitorPublishesInitialValue();
+    void checkedDirectPublishPreservesDisplayMetadata();
+    void staleMonitorHandleDoesNotPublishAfterIndexReuse();
     void configFromWidgetPropertyWorks();
     void filterSuffixIsIgnored();
     void channelsAreSharedByBaseName();

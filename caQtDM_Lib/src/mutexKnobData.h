@@ -43,6 +43,7 @@
 #include <QMap>
 #include <QPair>
 #include <QWaitCondition>
+#include <functional>
 #include <deque>
 #include "knobData.h"
 #include "mutexKnobDataWrapper.h"
@@ -85,6 +86,10 @@ public:
     MonitorHandle GetMutexKnobDataHandle(int index);
     bool GetMutexKnobDataIfCurrent(MonitorHandle handle, knobData *data);
     bool SetMutexKnobDataIfCurrent(MonitorHandle handle, const knobData &data);
+    // The updater runs under the store mutex and must not call back into this
+    // object. Use this when a shallow knobData copy would alias owned buffers.
+    bool UpdateMutexKnobDataIfCurrent(MonitorHandle handle,
+                                      const std::function<void(knobData *)> &updater);
     bool SetMutexKnobDataReceivedIfCurrent(MonitorHandle handle, knobData *kData);
     int GetMutexKnobDataIndex();
     int GetMutexKnobDataSize();

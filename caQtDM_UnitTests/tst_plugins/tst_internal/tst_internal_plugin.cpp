@@ -121,6 +121,49 @@ void TestInternalPlugin::addMonitorPublishesInitialValue()
     QVERIFY(kData->edata.monitorCount > 0);
 }
 
+void TestInternalPlugin::checkedDirectPublishPreservesDisplayMetadata()
+{
+    int index = createMonitor("DIRECT", R"({"type":"double","val":4.5})");
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateDirect);
+    m_mutexKnobData->GetMutexKnobDataPtr(index)->edata.initialize = true;
+
+    pumpTimerOnce();
+
+    knobData *kData = m_mutexKnobData->GetMutexKnobDataPtr(index);
+    QCOMPARE(kData->edata.displayCount, kData->edata.monitorCount);
+    QCOMPARE(kData->edata.initialize, (int) false);
+}
+
+void TestInternalPlugin::staleMonitorHandleDoesNotPublishAfterIndexReuse()
+{
+    int index = createMonitor("STALE", R"({"type":"double","val":4.5})");
+
+    knobData retired = *m_mutexKnobData->GetMutexKnobDataPtr(index);
+    QMutex *retiredMutex = static_cast<QMutex *>(retired.mutex);
+    retired.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, retired);
+    delete retiredMutex;
+
+    knobData replacement;
+    memset(&replacement, 0, sizeof(knobData));
+    replacement.index = index;
+    replacement.mutex = (void *) new QMutex();
+    replacement.edata.rvalue = 123.0;
+    replacement.edata.monitorCount = 17;
+    qstrncpy(replacement.pv, "REUSED", MAXPVLEN - 1);
+    qstrncpy(replacement.pluginName, "internal", caqtdm_string_t_length);
+    m_mutexKnobData->SetMutexKnobData(index, replacement);
+
+    // The plugin still has the old registration in its publication map. Its
+    // captured generation must prevent it from writing into the reused slot.
+    pumpTimerOnce();
+
+    knobData *current = m_mutexKnobData->GetMutexKnobDataPtr(index);
+    QCOMPARE(current->edata.rvalue, 123.0);
+    QCOMPARE(current->edata.monitorCount, 17);
+    QCOMPARE(QString::fromLatin1(current->pv), QString("REUSED"));
+}
+
 void TestInternalPlugin::configFromWidgetPropertyWorks()
 {
     // full configuration far beyond MAXPVLEN, impossible as a channel name

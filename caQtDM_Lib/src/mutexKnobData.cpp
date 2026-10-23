@@ -520,6 +520,21 @@ bool MutexKnobData::SetMutexKnobDataIfCurrent(MonitorHandle handle, const knobDa
     return true;
 }
 
+bool MutexKnobData::UpdateMutexKnobDataIfCurrent(
+    MonitorHandle handle, const std::function<void(knobData *)> &updater)
+{
+    if (!handle.isValid() || !updater)
+        return false;
+
+    QMutexLocker locker(&mutex);
+    if (handle.index >= KnobDataArraySize || KnobData[handle.index].index != handle.index ||
+        monitorGenerations[handle.index] != handle.generation)
+        return false;
+
+    updater(&KnobData[handle.index]);
+    return true;
+}
+
 extern "C" MutexKnobData* C_SetMutexKnobData(MutexKnobData* p, int index, knobData data)
 {
     p->SetMutexKnobData(index, data);
@@ -690,12 +705,23 @@ bool MutexKnobData::SetMutexKnobDataReceivedImpl(knobData *kData, const MonitorH
             // Preserve callback mutations and first-update timing while
             // capturing the stored record before unlocking.
             kData->edata.displayCount = kData->edata.monitorCount;
+            if(expectedHandle != Q_NULLPTR)
+                KnobData[index].edata.displayCount = kData->edata.displayCount;
             knobData updateSnapshot = KnobData[index];
             QWidget *dispW = (QWidget*) updateSnapshot.dispW;
             locker.unlock();
             UpdateWidget(index, dispW, units, fec, dataString, updateSnapshot);
-            kData->edata.lastTimeMs = QDateTime::currentMSecsSinceEpoch();
+            qint64 lastTimeMs = QDateTime::currentMSecsSinceEpoch();
+            kData->edata.lastTimeMs = lastTimeMs;
             kData->edata.initialize = false;
+            if(expectedHandle != Q_NULLPTR) {
+                QMutexLocker updateLocker(&mutex);
+                if(KnobData[index].index == index &&
+                   monitorGenerations[index] == expectedHandle->generation) {
+                    KnobData[index].edata.lastTimeMs = lastTimeMs;
+                    KnobData[index].edata.initialize = false;
+                }
+            }
             displayCount++;
         }
     }

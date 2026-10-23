@@ -115,24 +115,30 @@ void InternalPlugin::publishChannel(const QString &key, InternalChannel *channel
 void InternalPlugin::publishIndex(InternalChannel *channel, int index)
 {
     if(mutexknobdataP == (MutexKnobData *) Q_NULLPTR) return;
-    knobData *kData = mutexknobdataP->GetMutexKnobDataPtr(index);
-    if((kData == (knobData *) Q_NULLPTR) || (kData->index == -1)) return;
+    MutexKnobData::MonitorHandle handle = monitorHandles.value(index);
+    if(!handle.isValid()) return;
 
-    bool lockable = (kData->mutex != (void *) Q_NULLPTR);
-    if(lockable) mutexknobdataP->DataLock(kData);
     // a changed limit/precision/units re-arms initialize so caqtdm_lib
     // re-evaluates channel-derived widget limits, like a real EPICS
     // DBE_PROPERTY update does (see epics3's displayCallback)
-    if(channel->controlInfoChanged) {
-        kData->edata.initialize = true;
-        qCDebug(internalLog) << "control info changed, forcing initialize=true for index" << index;
+    bool updated = mutexknobdataP->UpdateMutexKnobDataIfCurrent(
+        handle, [this, channel, index](knobData *kData) {
+            if(channel->controlInfoChanged) {
+                kData->edata.initialize = true;
+                qCDebug(internalLog) << "control info changed, forcing initialize=true for index" << index;
+            }
+            channel->fillKnobDataField(kData, monitorFields.value(index, InternalChannel::FieldVal));
+            kData->edata.monitorCount++;
+            kData->edata.actTimeMs = QDateTime::currentMSecsSinceEpoch();
+        });
+    if(updated) {
+        // Copy out the updated record after the store lock is released. Its
+        // dataB remains owned by the stored record, so the checked receive
+        // path can snapshot and emit it without transferring or freeing it.
+        knobData snapshot;
+        if(mutexknobdataP->GetMutexKnobDataIfCurrent(handle, &snapshot))
+            mutexknobdataP->SetMutexKnobDataReceivedIfCurrent(handle, &snapshot);
     }
-    channel->fillKnobDataField(kData, monitorFields.value(index, InternalChannel::FieldVal));
-    kData->edata.monitorCount++;
-    kData->edata.actTimeMs = QDateTime::currentMSecsSinceEpoch();
-    mutexknobdataP->SetMutexKnobData(kData->index, *kData);
-    mutexknobdataP->SetMutexKnobDataReceived(kData);
-    if(lockable) mutexknobdataP->DataUnlock(kData);
 }
 
 // where a channel definition comes from, for the duplicate definition message
@@ -156,6 +162,9 @@ int InternalPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
     InternalChannel::Field field;
 
     qCDebug(internalLog) << "pvAddMonitor" << pv << kData->index;
+
+    MutexKnobData::MonitorHandle handle = mutexknobdataP->GetMutexKnobDataHandle(kData->index);
+    if(!handle.isValid()) return false;
 
     // unknown extensions are not handled at all
     if(!InternalChannel::splitField(pv, &key, &field)) {
@@ -210,6 +219,7 @@ int InternalPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
 
     monitorIndexes[key].append(kData->index);
     monitorFields.insert(kData->index, field);
+    monitorHandles.insert(kData->index, handle);
     channel->needsPublish = true;
 
     return true;
@@ -224,6 +234,7 @@ int InternalPlugin::pvClearMonitor(knobData *kData)
     qCDebug(internalLog) << "pvClearMonitor" << kData->pv << kData->index;
 
     monitorFields.remove(kData->index);
+    monitorHandles.remove(kData->index);
     lastPublishedField.remove(kData->index);
     QMap<QString, QList<int> >::iterator i = monitorIndexes.find(key);
     if(i != monitorIndexes.end()) {

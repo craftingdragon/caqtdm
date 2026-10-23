@@ -88,6 +88,7 @@ private:
     QMap<QString, InternalChannel *> channels;
     QMap<QString, QList<int> > monitorIndexes;
     QMap<int, InternalChannel::Field> monitorFields;
+    QMap<int, MutexKnobData::MonitorHandle> monitorHandles;
     QMap<int, QVariant> lastPublishedField;
     QTimer *timer;
 };
