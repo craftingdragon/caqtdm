@@ -43,6 +43,7 @@
 #include <QMap>
 #include <QPair>
 #include <QWaitCondition>
+#include <deque>
 #include "knobData.h"
 #include "mutexKnobDataWrapper.h"
 
@@ -110,7 +111,9 @@ private:
     } softlist;
 
     QMutex mutex;
-    knobData *KnobData;
+    // Records remain at stable addresses because plugins may retain the
+    // pointers returned by GetMutexKnobDataPtr() while new monitors are added.
+    std::deque<knobData> KnobData;
     int KnobDataArraySize;
     int timerId, prvRepetitionRate;
     QMap<QString, int> softPV_WidgetList;

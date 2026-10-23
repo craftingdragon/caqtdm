@@ -43,14 +43,7 @@ Q_LOGGING_CATEGORY(mutexKnobDataLog, "caqtdm.lib.mutexknobdata")
 MutexKnobData::MutexKnobData()
 {
     KnobDataArraySize=500;
-    KnobData = (knobData*) malloc(KnobDataArraySize * sizeof(knobData));
-    if (KnobData==Q_NULLPTR) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-        qCFatal(mutexKnobDataLog) << "caQtDM -- could not allocate memory -> exit";
-#else
-        qFatal("caQtDM -- could not allocate memory -> exit");
-#endif
-    }
+    KnobData.resize(KnobDataArraySize);
     for(int i=0; i < KnobDataArraySize; i++){
         KnobData[i].index  = -1;
         KnobData[i].thisW = (void*) Q_NULLPTR;
@@ -448,8 +441,7 @@ int MutexKnobData::GetMutexKnobDataIndex()
     }
     oldsize=KnobDataArraySize;
     newsize = KnobDataArraySize+200;
-    void *p = &KnobData;
-    ReAllocate(oldsize * (int) sizeof(knobData), newsize * (int) sizeof(knobData), (void**) p);
+    KnobData.resize(newsize);
     for(int i=oldsize; i < newsize; i++){
         KnobData[i].index  = -1;
     }
@@ -473,7 +465,7 @@ int MutexKnobData::GetMutexKnobDataSize()
 void MutexKnobData::SetMutexKnobData(int index, knobData data)
 {
     QMutexLocker locker(&mutex);
-    if (KnobData&&(index<KnobDataArraySize))
+    if (index >= 0 && index < KnobDataArraySize)
         memcpy(&KnobData[index], &data, sizeof(knobData));
 }
 

@@ -714,3 +714,33 @@ void TestCaQtDM_Lib::computeNumericMaxMinPrecUpdatesWhenChannelChanges()
     checkWidgetPicksUpFieldWrite<caSpinbox>(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                              "T_Spinbox_Live");
 }
+
+void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()
+{
+    const int firstIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    QCOMPARE(firstIndex, 0);
+
+    knobData firstRecord = {};
+    firstRecord.index = firstIndex;
+    firstRecord.edata.rvalue = 42.5;
+    qstrncpy(firstRecord.pv, "stable-record", sizeof(firstRecord.pv));
+    m_mutexKnobData->SetMutexKnobData(firstIndex, firstRecord);
+
+    knobData *heldRecord = m_mutexKnobData->GetMutexKnobDataPtr(firstIndex);
+    QVERIFY(heldRecord != Q_NULLPTR);
+    const knobData *originalAddress = heldRecord;
+
+    // The store begins with 500 slots and grows in blocks of 200.
+    for (int i = 1; i < 701; ++i) {
+        const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+        QCOMPARE(index, i);
+        knobData record = {};
+        record.index = index;
+        m_mutexKnobData->SetMutexKnobData(index, record);
+    }
+
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataSize(), 900);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataPtr(firstIndex), originalAddress);
+    QCOMPARE(QString(heldRecord->pv), QStringLiteral("stable-record"));
+    QCOMPARE(heldRecord->edata.rvalue, 42.5);
+}

@@ -58,6 +58,7 @@ private slots:
     void computeNumericMaxMinPrecIgnoresChannelInUserMode();
     void computeNumericMaxMinPrecHonoursMaxChannelPrecision();
     void computeNumericMaxMinPrecUpdatesWhenChannelChanges();
+    void monitorRecordAddressSurvivesStoreGrowth();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
