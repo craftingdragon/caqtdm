@@ -81,6 +81,7 @@ public:
     knobData GetMutexKnobData(int indx);
     knobData *GetMutexKnobDataPtr(int indx);
     void SetMutexKnobData(int indx, knobData data);
+    MonitorHandle SetMutexKnobDataAndGetHandle(int indx, knobData data);
     // Checked operations require caller-owned copies. They validate the
     // handle and access the record under the store mutex.
     MonitorHandle GetMutexKnobDataHandle(int index);

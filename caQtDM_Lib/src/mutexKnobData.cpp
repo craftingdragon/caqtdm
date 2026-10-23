@@ -481,6 +481,23 @@ void MutexKnobData::SetMutexKnobData(int index, knobData data)
     }
 }
 
+MutexKnobData::MonitorHandle MutexKnobData::SetMutexKnobDataAndGetHandle(int index, knobData data)
+{
+    QMutexLocker locker(&mutex);
+    if(index < 0 || index >= KnobDataArraySize || data.index != index)
+        return MonitorHandle();
+
+    if(KnobData[index].index == -1) {
+        ++monitorGenerations[index];
+        if(monitorGenerations[index] == 0)
+            ++monitorGenerations[index];
+    } else if(KnobData[index].index != index || monitorGenerations[index] == 0) {
+        return MonitorHandle();
+    }
+    memcpy(&KnobData[index], &data, sizeof(knobData));
+    return MonitorHandle(index, monitorGenerations[index]);
+}
+
 MutexKnobData::MonitorHandle MutexKnobData::GetMutexKnobDataHandle(int index)
 {
     QMutexLocker locker(&mutex);
@@ -539,6 +556,12 @@ extern "C" MutexKnobData* C_SetMutexKnobData(MutexKnobData* p, int index, knobDa
 {
     p->SetMutexKnobData(index, data);
     return p;
+}
+extern "C" uint64_t C_SetMutexKnobDataAndGetGeneration(
+    MutexKnobData* p, int index, knobData data)
+{
+    if(p == Q_NULLPTR) return 0;
+    return p->SetMutexKnobDataAndGetHandle(index, data).generation;
 }
 //*********************************************************************************************************************
 
@@ -992,6 +1015,25 @@ extern "C" MutexKnobData* C_SetMutexKnobDataConnected(MutexKnobData* p, int inde
 {
     p->SetMutexKnobDataConnected(index,connected);
     return p;
+}
+extern "C" uint64_t C_GetMutexKnobDataGeneration(MutexKnobData* p, int index)
+{
+    if(p == Q_NULLPTR) return 0;
+    return p->GetMutexKnobDataHandle(index).generation;
+}
+extern "C" int C_GetMutexKnobDataIfCurrent(
+    MutexKnobData* p, int index, uint64_t generation, knobData *data)
+{
+    if(p == Q_NULLPTR || generation == 0) return false;
+    return p->GetMutexKnobDataIfCurrent(
+        MutexKnobData::MonitorHandle(index, generation), data);
+}
+extern "C" int C_SetMutexKnobDataConnectedIfCurrent(
+    MutexKnobData* p, int index, uint64_t generation, int connected)
+{
+    if(p == Q_NULLPTR || generation == 0) return false;
+    return p->SetMutexKnobDataConnectedIfCurrent(
+        MutexKnobData::MonitorHandle(index, generation), connected);
 }
 //*********************************************************************************************************************
 

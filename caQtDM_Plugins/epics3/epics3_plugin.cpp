@@ -23,6 +23,7 @@
  *    anton.mezger@psi.ch
  */
 #include <QDebug>
+#include <stdint.h>
 #include <cadef.h>
 #include "epics3_plugin.h"
 #include "caQtDM_Plugins_global.h"
@@ -32,6 +33,7 @@ Q_LOGGING_CATEGORY(epics3Log, "caqtdm.plugins.epics.3")
 typedef struct _connectInfo {
     int connected;
     int index;
+    uint64_t generation;
     int event;
     pv_string pv;    // channel name
     chid ch;         // read channel

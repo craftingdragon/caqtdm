@@ -30,6 +30,7 @@
 #include <canumeric.h>
 #include <caspinbox.h>
 #include <gensoftpv.h>
+#include <mutexKnobDataWrapper.h>
 
 #include <QSignalSpy>
 #include <cfloat>
@@ -857,6 +858,52 @@ void TestCaQtDM_Lib::checkedConnectionUpdateRejectsStaleHandle()
     QCOMPARE(updates.count(), 0);
 
     QVERIFY(m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(currentHandle, false));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
+    QCOMPARE(updates.count(), 1);
+}
+
+void TestCaQtDM_Lib::checkedConnectionCWrapperRejectsStaleGeneration()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData oldRecord = {};
+    oldRecord.index = index;
+    const uint64_t oldGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, index, oldRecord);
+    QVERIFY(oldGeneration != 0);
+
+    QCOMPARE(C_GetMutexKnobDataGeneration(m_mutexKnobData, index), oldGeneration);
+    knobData checkedRecord;
+    QVERIFY(C_GetMutexKnobDataIfCurrent(m_mutexKnobData, index, oldGeneration, &checkedRecord));
+    QCOMPARE(checkedRecord.index, index);
+    QSignalSpy updates(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget);
+    QVERIFY(updates.isValid());
+    QVERIFY(C_SetMutexKnobDataConnectedIfCurrent(m_mutexKnobData, index, oldGeneration, 1));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(index).edata.connected, 1);
+    QCOMPARE(updates.count(), 0);
+
+    oldRecord.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    const int reusedIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    QCOMPARE(reusedIndex, index);
+    knobData currentRecord = {};
+    currentRecord.index = reusedIndex;
+    const uint64_t currentGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, reusedIndex, currentRecord);
+    QVERIFY(currentGeneration != 0);
+
+    QCOMPARE(C_GetMutexKnobDataGeneration(m_mutexKnobData, reusedIndex), currentGeneration);
+    QVERIFY(currentGeneration != oldGeneration);
+    QVERIFY(!C_GetMutexKnobDataIfCurrent(m_mutexKnobData, reusedIndex, oldGeneration, &checkedRecord));
+    QVERIFY(C_GetMutexKnobDataIfCurrent(m_mutexKnobData, reusedIndex, currentGeneration, &checkedRecord));
+    QCOMPARE(checkedRecord.index, reusedIndex);
+    QVERIFY(!C_SetMutexKnobDataConnectedIfCurrent(m_mutexKnobData, reusedIndex, oldGeneration, 1));
+    QVERIFY(!C_SetMutexKnobDataConnectedIfCurrent(m_mutexKnobData, reusedIndex, oldGeneration, 0));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
+    QCOMPARE(updates.count(), 0);
+    QVERIFY(C_SetMutexKnobDataConnectedIfCurrent(m_mutexKnobData, reusedIndex, currentGeneration, 1));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 1);
+    QCOMPARE(updates.count(), 0);
+    QVERIFY(C_SetMutexKnobDataConnectedIfCurrent(m_mutexKnobData, reusedIndex, currentGeneration, 0));
     QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
     QCOMPARE(updates.count(), 1);
 }

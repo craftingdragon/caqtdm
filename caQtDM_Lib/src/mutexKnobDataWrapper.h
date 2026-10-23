@@ -26,6 +26,7 @@
 #ifndef MUTEXKNOBDATAWRAPPER_H
 #define MUTEXKNOBDATAWRAPPER_H
 
+#include <stdint.h>
 #include "caQtDM_Lib_global.h"
 
 #ifdef __cplusplus
@@ -34,8 +35,15 @@ extern "C" {
 
 extern CAQTDM_LIBSHARED_EXPORT void MutexKnobDataWrapperInit(MutexKnobData*);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_SetMutexKnobData(MutexKnobData* p, int indx, knobData data);
+extern CAQTDM_LIBSHARED_EXPORT uint64_t C_SetMutexKnobDataAndGetGeneration(
+    MutexKnobData* p, int indx, knobData data);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_GetMutexKnobData(MutexKnobData* p, int indx, knobData *data);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_SetMutexKnobDataConnected(MutexKnobData* p, int indx, int connected);
+extern CAQTDM_LIBSHARED_EXPORT uint64_t C_GetMutexKnobDataGeneration(MutexKnobData* p, int indx);
+extern CAQTDM_LIBSHARED_EXPORT int C_GetMutexKnobDataIfCurrent(
+    MutexKnobData* p, int indx, uint64_t generation, knobData *data);
+extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataConnectedIfCurrent(
+    MutexKnobData* p, int indx, uint64_t generation, int connected);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_SetMutexKnobDataReceived(MutexKnobData* p, knobData *kData);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_UpdateTextLine(MutexKnobData* p, char *message, char *name);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_DataLock(MutexKnobData* p, knobData *kData);

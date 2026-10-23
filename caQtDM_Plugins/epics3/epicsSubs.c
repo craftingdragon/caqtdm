@@ -76,6 +76,7 @@ static int firstTime = true;
 typedef struct _connectInfo {
     int connected;
     int index;
+    uint64_t generation;
     int event;
     pv_string pv;    // channel name
     chid ch;         // read channel
@@ -128,7 +129,7 @@ char* myLimitedString (char * strng) {
     C_postMsgEvent(messageWindowPtr, 1, vaPrintf("put pv (%s) %s\n", pv, ca_message (status))); \
     connectInfo *info = (connectInfo *) ca_puser(ch);\
     info->connected=false;\
-    C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);\
+    C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected);\
     info->evAdded = false;\
     if (ca_state(info->ch) == cs_conn) {\
         status = ca_clear_event(info->evID);\
@@ -158,10 +159,11 @@ char* myLimitedString (char * strng) {
     info->evAdded = false;\
     info->evID = 0;\
     info->event = 0;\
-    C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);\
-    knobData kData;\
-    C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);\
-    EpicsReconnect(&kData);\
+    if(C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected)) {\
+        knobData kData;\
+        if(C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index, info->generation, &kData))\
+            EpicsReconnect(&kData);\
+    }\
     return status
 
 
@@ -822,7 +824,7 @@ void connectCallback(struct connection_handler_args args)
     }
 
     // update knobdata connection
-    C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);
+    C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected);
 }
 
 /**
@@ -850,8 +852,14 @@ int CreateAndConnect(int index, knobData *kData, int rate, int skip)
     info->evAdded = false;
     info->ch = 0;
 
-    // update knobdata
-    C_SetMutexKnobData(mutexKnobdataPtr, index, *kData);
+    // Store the monitor record and capture its generation atomically before
+    // registering callbacks with Channel Access.
+    info->generation = C_SetMutexKnobDataAndGetGeneration(mutexKnobdataPtr, index, *kData);
+    if(info->generation == 0) {
+        kData->edata.info = 0;
+        free(info);
+        return -1;
+    }
 
     //printf("we have to add an epics device <%s>\n", kData->pv);
     status = ca_create_channel(kData->pv,
@@ -990,7 +998,7 @@ void ClearMonitor(knobData *kData)
         } else {
             PRINT(printf("ClearMonitor -- %s is not connected index=%d %d\n", info->pv, info->index, info->evID));
             info->connected=false;
-            C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);
+            C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected);
             info->evAdded = false;
             info->evID = 0;
             info->event = 0;
@@ -1116,10 +1124,11 @@ int EpicsSetValue_Connected(chid ch,char *pv, double rdata, int32_t idata, char 
             info->evAdded = false;
             info->evID = 0;
             info->event = 0;
-            C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);
-            knobData kData;
-            C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);\
-            EpicsReconnect(&kData);
+            if(C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected)) {
+                knobData kData;
+                if(C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index, info->generation, &kData))
+                    EpicsReconnect(&kData);
+            }
             return status;
 
         }
@@ -1150,10 +1159,11 @@ int EpicsSetValue_Connected(chid ch,char *pv, double rdata, int32_t idata, char 
             info->evAdded = false;
             info->evID = 0;
             info->event = 0;
-            C_SetMutexKnobDataConnected(mutexKnobdataPtr, info->index, info->connected);
-            knobData kData;
-            C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);\
-            EpicsReconnect(&kData);
+            if(C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected)) {
+                knobData kData;
+                if(C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index, info->generation, &kData))
+                    EpicsReconnect(&kData);
+            }
             return status;
 
 

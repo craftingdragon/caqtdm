@@ -62,6 +62,7 @@ private slots:
     void updateForDestroyedMonitorWidgetIsIgnored();
     void monitorHandleRejectsCallbacksAfterSlotReuse();
     void checkedConnectionUpdateRejectsStaleHandle();
+    void checkedConnectionCWrapperRejectsStaleGeneration();
     void monitorRecordAddressSurvivesStoreGrowth();
 
 private:
