@@ -172,7 +172,7 @@ private:
     bool callbackGateIsClosed();
 
     template <typename pureData> void fillData(pureData const &array, size_t size, knobData* kPtr);
-    void fillNtMetadata();
+    void fillNtMetadata(knobData &data);
 
     enum NormativeType {
         ntunknown_t,
@@ -687,18 +687,18 @@ PVAInterface::PVAInterface(
 
 // NT metadata, written on every publish (K6); an NTMatrix without a dim
 // so far is published as a column vector [valueCount, 1]
-void PVAInterface::fillNtMetadata()
+void PVAInterface::fillNtMetadata(knobData &data)
 {
-    kData.edata.ntType = ntKind;
+    data.edata.ntType = ntKind;
     if(ntKind == NT_MATRIX) {
         bool cached = (dimRows > 0 && dimCols > 0);
-        kData.edata.dimCount = 2;
-        kData.edata.dim[0] = cached ? dimRows : kData.edata.valueCount;
-        kData.edata.dim[1] = cached ? dimCols : 1;
+        data.edata.dimCount = 2;
+        data.edata.dim[0] = cached ? dimRows : data.edata.valueCount;
+        data.edata.dim[1] = cached ? dimCols : 1;
     } else {
-        kData.edata.dimCount = 0;
-        kData.edata.dim[0] = 0;
-        kData.edata.dim[1] = 0;
+        data.edata.dimCount = 0;
+        data.edata.dim[0] = 0;
+        data.edata.dim[1] = 0;
     }
 }
 
@@ -984,7 +984,7 @@ void PVAInterface::monitorEvent(MonitorPtr const & monitor)
                 if(dimRows * dimCols != kData.edata.valueCount && dimRows > 0)
                     qCDebug(::epics4Log) << kData.pv << "dim" << dimRows << "x" << dimCols << "does not match" << kData.edata.valueCount << "values";
             }
-            fillNtMetadata();
+            fillNtMetadata(kData);
             qCDebug(::epics4Log) << "update" << kData.pv << kData.index << kData.pluginFlavor << kData.dispName <<kData.edata.rvalue << kData.edata.ivalue;
             mutexKnobData->SetMutexKnobDataReceived(&kData);
         } catch (std::exception &e) {
@@ -1115,16 +1115,17 @@ void PVAInterface::gotInterface()
             message("no support",errorMessage);
             return;
         }
-        kData = mutexKnobData->GetMutexKnobData(index);
-        if(kData.index == -1) return;
-        mutexKnobData->DataLock(&kData);
-        kData.edata.initialize = true;
-        kData.edata.accessR = 1;
-        kData.edata.accessW = 1;
-        fillNtMetadata();
-        mutexKnobData->SetMutexKnobDataReceived(&kData);
+        knobData metadata;
+        if(!mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &metadata)) return;
+        mutexKnobData->DataLock(&metadata);
+        metadata.edata.initialize = true;
+        metadata.edata.accessR = 1;
+        metadata.edata.accessW = 1;
+        fillNtMetadata(metadata);
+        bool published = mutexKnobData->SetMutexKnobDataReceivedIfCurrent(monitorHandle, &metadata);
 
-        mutexKnobData->DataUnlock(&kData);
+        mutexKnobData->DataUnlock(&metadata);
+        if(!published) return;
         callbackType = createMonitor_t;
         callbackThread->queueRequest(shared_from_this());
         return;
@@ -1194,54 +1195,55 @@ void PVAInterface::gotDisplayControl(PVStructurePtr const & pvStructure)
         if(pvString)  description = pvString->get();
     }
 
-    kData = mutexKnobData->GetMutexKnobData(index);
-    if(kData.index == -1) return;
-    mutexKnobData->DataLock(&kData);
-    kData.edata.initialize = true;
-    kData.edata.upper_disp_limit = displayHigh;
-    kData.edata.lower_disp_limit = displayLow;
-    kData.edata.upper_ctrl_limit = controlHigh;
-    kData.edata.lower_ctrl_limit = controlLow;
-    kData.edata.precision = precision;
+    knobData metadata;
+    if(!mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &metadata)) return;
+    mutexKnobData->DataLock(&metadata);
+    metadata.edata.initialize = true;
+    metadata.edata.upper_disp_limit = displayHigh;
+    metadata.edata.lower_disp_limit = displayLow;
+    metadata.edata.upper_ctrl_limit = controlHigh;
+    metadata.edata.lower_ctrl_limit = controlLow;
+    metadata.edata.precision = precision;
 
-    qstrncpy(kData.edata.fec, pvaChannel->getChannel()->getRemoteAddress().c_str(),caqtdm_string_t_length);
+    qstrncpy(metadata.edata.fec, pvaChannel->getChannel()->getRemoteAddress().c_str(),caqtdm_string_t_length);
     AccessRights accessr = pvaChannel->getChannel()->getAccessRights(pvField);
-    kData.edata.accessR = 1;
-    kData.edata.accessW = 1;
+    metadata.edata.accessR = 1;
+    metadata.edata.accessW = 1;
     switch (accessr) {
         case AccessRights::none:
             {
-                kData.edata.accessR = 0;
-                kData.edata.accessW = 0;
+                metadata.edata.accessR = 0;
+                metadata.edata.accessW = 0;
             }
             break;
         case AccessRights::read:
             {
-                kData.edata.accessR = 1;
-                kData.edata.accessW = 0;
+                metadata.edata.accessR = 1;
+                metadata.edata.accessW = 0;
             }
             break;
         case AccessRights::readWrite:
             {
-                kData.edata.accessR = 1;
-                kData.edata.accessW = 1;
+                metadata.edata.accessR = 1;
+                metadata.edata.accessW = 1;
             }
             break;
     }
 
     int len = units.length();
-    if(len>39) len = 39;    // kData.edata.units is 40 bytes
+    if(len>39) len = 39;    // edata.units is 40 bytes
     if(len<1) {
-        kData.edata.units[0] = '\0';
+        metadata.edata.units[0] = '\0';
     } else {
         const char * from = units.c_str();
-        for(int i=0; i< len; ++i) kData.edata.units[i] = from[i];
-        kData.edata.units[len] = '\0';
+        for(int i=0; i< len; ++i) metadata.edata.units[i] = from[i];
+        metadata.edata.units[len] = '\0';
     }
-    fillNtMetadata();
-    mutexKnobData->SetMutexKnobDataReceived(&kData);
+    fillNtMetadata(metadata);
+    bool published = mutexKnobData->SetMutexKnobDataReceivedIfCurrent(monitorHandle, &metadata);
 
-    mutexKnobData->DataUnlock(&kData);
+    mutexKnobData->DataUnlock(&metadata);
+    if(!published) return;
     callbackType = createMonitor_t;
     callbackThread->queueRequest(shared_from_this());
     pvaChannelGet.reset();
@@ -1303,7 +1305,7 @@ void PVAInterface::gotEnum(PVStructurePtr const & pvStructure)
     kData.edata.fieldtype  = DBF_ENUM;
     kData.edata.accessR = 1;
     kData.edata.accessW = 1;
-    fillNtMetadata();
+    fillNtMetadata(kData);
 
     mutexKnobData->SetMutexKnobDataReceived(&kData);
 
