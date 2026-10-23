@@ -33,7 +33,11 @@
 #include <epicsThread.h>
 #include <ctime>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
+#include <limits>
+#include <stdexcept>
+#include <vector>
 #include "caQtDM_Plugins_global.h"
 
 Q_LOGGING_CATEGORY(epics4Log, "caqtdm.plugins.epics.4")
@@ -171,7 +175,9 @@ private:
     void endCallback();
     bool callbackGateIsClosed();
 
-    template <typename pureData> void fillData(pureData const &array, size_t size, knobData* kPtr);
+    template <typename pureData>
+    void fillData(pureData const &array, size_t size, knobData &data,
+                  std::vector<char> &payload, bool &payloadUpdated);
     void fillNtMetadata(knobData &data);
 
     enum NormativeType {
@@ -212,7 +218,6 @@ private:
     Event waitForPutConnect;
     Monitor::shared_pointer monitor;
     ConvertPtr convert;
-    knobData kData;
     shared_vector<const string> choices;
     TimeStamp timeStamp;
     bool gotTimeStamp;
@@ -297,9 +302,11 @@ public:
     void gotEnum(PVStructurePtr const & pvStructure);
     void createMonitor();
     void gotMonitor();
-    void getScalarData(PVStructurePtr const & pvStructure);
-    void getEnumData(PVStructurePtr const & pvStructure);
-    void getScalarArrayData(PVStructurePtr const & pvStructure);
+    void getScalarData(PVStructurePtr const &pvStructure, knobData &data,
+                       std::vector<char> &payload, bool &payloadUpdated);
+    void getEnumData(PVStructurePtr const &pvStructure, knobData &data);
+    void getScalarArrayData(PVStructurePtr const &pvStructure, knobData &data,
+                            std::vector<char> &payload, bool &payloadUpdated);
     bool setValue(double rdata, int32_t idata, char *sdata, int forceType);
     bool setArrayValue(
             float *fdata, double *ddata,
@@ -933,30 +940,41 @@ void PVAInterface::monitorEvent(MonitorPtr const & monitor)
     CallbackLease lease(this);
     if(!lease) return;
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "PVAInterface::monitorEvent";
+
+    struct MonitorElementRelease {
+        MonitorPtr monitor;
+        MonitorElementPtr element;
+        ~MonitorElementRelease() { if(monitor && element) monitor->release(element); }
+    };
+
     while(true) {
         if(callbackGateIsClosed()) break;
         MonitorElementPtr monitorElement(monitor->poll());
         if(!monitorElement) break;
+        MonitorElementRelease release{monitor, monitorElement};
         if(callbackGateIsClosed()) {
-            monitor->release(monitorElement);
             break;
         }
         PVStructurePtr pvStructure = monitorElement->pvStructurePtr;
-        kData = mutexKnobData->GetMutexKnobData(index);
-        if(kData.index == -1) {
-            monitor->release(monitorElement);
-            return;
-        }
-        mutexKnobData->DataLock(&kData);
-        // nothing may escape into the pvAccess thread
+        knobData lockData;
+        if(!mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &lockData)) return;
+        mutexKnobData->DataLock(&lockData);
         try {
+            knobData updateData;
+            if(!mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &updateData)) {
+                mutexKnobData->DataUnlock(&lockData);
+                continue;
+            }
+            std::vector<char> payload;
+            bool payloadUpdated = false;
+
             // from the monitor data, the ca introspection lacks timeStamp
             PVFieldPtr pvAlarmField = pvStructure->getSubField<PVStructure>("alarm");
             Alarm alarm;
             PVAlarm pvAlarm;
             if(pvAlarmField && pvAlarm.attach(pvAlarmField)) {
                 pvAlarm.get(alarm);
-                kData.edata.severity = alarm.getSeverity();
+                updateData.edata.severity = alarm.getSeverity();
             }
             PVFieldPtr pvTimeField = pvStructure->getSubField<PVStructure>("timeStamp");
             PVTimeStamp pvTimeStamp;
@@ -966,9 +984,9 @@ void PVAInterface::monitorEvent(MonitorPtr const & monitor)
             }
 
             switch (normativeType) {
-                case ntscalar_t : getScalarData(pvStructure); break;
-                case ntenum_t : getEnumData(pvStructure); break;
-                case ntscalararray_t : getScalarArrayData(pvStructure); break;
+                case ntscalar_t : getScalarData(pvStructure, updateData, payload, payloadUpdated); break;
+                case ntenum_t : getEnumData(pvStructure, updateData); break;
+                case ntscalararray_t : getScalarArrayData(pvStructure, updateData, payload, payloadUpdated); break;
                 default: message("monitorEvent logic error",errorMessage); break;
             }
             if(ntKind == NT_MATRIX) {
@@ -981,18 +999,65 @@ void PVAInterface::monitorEvent(MonitorPtr const & monitor)
                         dimCols = dim[1];
                     }
                 }
-                if(dimRows * dimCols != kData.edata.valueCount && dimRows > 0)
-                    qCDebug(::epics4Log) << kData.pv << "dim" << dimRows << "x" << dimCols << "does not match" << kData.edata.valueCount << "values";
+                if(dimRows * dimCols != updateData.edata.valueCount && dimRows > 0)
+                    qCDebug(::epics4Log) << updateData.pv << "dim" << dimRows << "x" << dimCols << "does not match" << updateData.edata.valueCount << "values";
             }
-            fillNtMetadata(kData);
-            qCDebug(::epics4Log) << "update" << kData.pv << kData.index << kData.pluginFlavor << kData.dispName <<kData.edata.rvalue << kData.edata.ivalue;
-            mutexKnobData->SetMutexKnobDataReceived(&kData);
+            fillNtMetadata(updateData);
+
+            bool allocationSucceeded = true;
+            const bool updated = mutexKnobData->UpdateMutexKnobDataIfCurrent(
+                monitorHandle, [&updateData, &payload, payloadUpdated, &allocationSucceeded](knobData *stored) {
+                    void *newBuffer = stored->edata.dataB;
+                    int newBufferSize = stored->edata.dataSize;
+                    if(payloadUpdated &&
+                       (newBuffer == Q_NULLPTR || payload.size() > (size_t) qMax(0, newBufferSize))) {
+                        newBuffer = malloc(payload.size());
+                        if(newBuffer == Q_NULLPTR) {
+                            allocationSucceeded = false;
+                            return;
+                        }
+                        newBufferSize = (int) payload.size();
+                    }
+
+                    if(payloadUpdated && !payload.empty())
+                        memcpy(newBuffer, payload.data(), payload.size());
+                    if(payloadUpdated && newBuffer != stored->edata.dataB && stored->edata.dataB != Q_NULLPTR)
+                        free(stored->edata.dataB);
+
+                    const int displayCount = stored->edata.displayCount;
+                    const int monitorCountPrev = stored->edata.monitorCountPrev;
+                    const qint64 lastTimeMs = stored->edata.lastTimeMs;
+                    const bool initialize = stored->edata.initialize;
+                    const int dataSize = stored->edata.dataSize;
+                    memcpy(&stored->edata, &updateData.edata, sizeof(epicsData));
+                    stored->edata.displayCount = displayCount;
+                    stored->edata.monitorCountPrev = monitorCountPrev;
+                    stored->edata.lastTimeMs = lastTimeMs;
+                    stored->edata.initialize = initialize;
+                    if(payloadUpdated) {
+                        stored->edata.dataB = newBuffer;
+                        // Scalar strings publish their current logical length.
+                        // Arrays retain the allocated capacity in dataSize.
+                        stored->edata.dataSize = updateData.edata.dataSize;
+                    } else {
+                        stored->edata.dataSize = dataSize;
+                    }
+                });
+
+            if(updated && allocationSucceeded) {
+                knobData publishData;
+                if(mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &publishData)) {
+                    qCDebug(::epics4Log) << "update" << publishData.pv << publishData.index
+                                         << publishData.pluginFlavor << publishData.dispName
+                                         << publishData.edata.rvalue << publishData.edata.ivalue;
+                    mutexKnobData->SetMutexKnobDataReceivedIfCurrent(monitorHandle, &publishData);
+                }
+            }
         } catch (std::exception &e) {
-            qCCritical(::epics4Log) << "PVAInterface::monitorEvent" << kData.pv << "exception" << e.what();
+            qCCritical(::epics4Log) << "PVAInterface::monitorEvent" << "index" << index << "exception" << e.what();
         }
 
-        mutexKnobData->DataUnlock(&kData);
-        monitor->release(monitorElement);
+        mutexKnobData->DataUnlock(&lockData);
     }
 }
 
@@ -1354,9 +1419,10 @@ void PVAInterface::gotMonitor()
 }
 
 
-void PVAInterface::getScalarData(PVStructurePtr const & pvStructure)
+void PVAInterface::getScalarData(PVStructurePtr const &pvStructure, knobData &data,
+                                 std::vector<char> &payload, bool &payloadUpdated)
 {
-    if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "getScalarData " << kData.pv;
+    if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "getScalarData " << data.pv;
     PVScalarPtr pvScalar = pvStructure->getSubField<PVScalar>("value");
     if(!pvScalar) {
         qCDebug(::epics4Log) << "PVAInterface::getScalarData pvStructure \n" << pvStructure.get();
@@ -1367,137 +1433,111 @@ void PVAInterface::getScalarData(PVStructurePtr const & pvStructure)
     if(pvAlarmField) {
         Alarm alarm;
         PVAlarm pvAlarm;
-        bool result;
-        result = pvAlarm.attach(pvAlarmField);
-        if(result) {
+        if(pvAlarm.attach(pvAlarmField)) {
             pvAlarm.get(alarm);
-            int sev = alarm.getSeverity();
-            kData.edata.severity = sev;
-            kData.edata.status = (sev==0 ? 0 : 17);
+            data.edata.severity = alarm.getSeverity();
+            data.edata.status = (data.edata.severity == 0 ? 0 : 17);
         }
     }
+
     ScalarType scalarType = pvScalar->getScalar()->getScalarType();
-
-    switch (scalarType) {
-    case pvBoolean:
-    {
-        //cout << "boolean "<< endl ;
-        PVBooleanPtr pvBoolean = std::dynamic_pointer_cast<PVBoolean>(pvScalar);
-        bool value  = pvBoolean->get();
-        kData.edata.ivalue = (value ? 1 : 0);
-        kData.edata.rvalue = (float) kData.edata.ivalue;
-        kData.edata.fieldtype  = DBF_LONG;
-        kData.edata.valueCount = 1;
-        kData.edata.monitorCount++;
-    }
+    switch(scalarType) {
+    case pvBoolean: {
+        PVBooleanPtr value = std::dynamic_pointer_cast<PVBoolean>(pvScalar);
+        data.edata.ivalue = value->get() ? 1 : 0;
+        data.edata.rvalue = (float) data.edata.ivalue;
+        data.edata.fieldtype = DBF_LONG;
+        data.edata.valueCount = 1;
+        data.edata.monitorCount++;
         break;
-    case pvByte:
-    {
-        //cout  << "byte " << endl ;
+    }
+    case pvByte: {
         char value = convert->toByte(pvScalar);
-        kData.edata.ivalue = value;
-        kData.edata.rvalue = value;
-        kData.edata.fieldtype  = DBF_CHAR;
-        kData.edata.valueCount = 1;
-        kData.edata.monitorCount++;
-    }
+        data.edata.ivalue = value;
+        data.edata.rvalue = value;
+        data.edata.fieldtype = DBF_CHAR;
+        data.edata.valueCount = 1;
+        data.edata.monitorCount++;
         break;
-    case pvShort:
-    case pvInt:
-    case pvLong:
-    case pvUByte:
-    case pvUShort:
-    case pvUInt:
-    case pvULong:
-    {
-        //cout  << "all others " << convert->toInt(pvScalar) << endl;
+    }
+    case pvShort: case pvInt: case pvLong: case pvUByte: case pvUShort: case pvUInt: case pvULong: {
         int32 value = convert->toInt(pvScalar);
-        kData.edata.ivalue = value;
-        kData.edata.rvalue = value;
-        kData.edata.fieldtype  = DBF_LONG;
-        kData.edata.valueCount = 1;
-        kData.edata.monitorCount++;
-    }
+        data.edata.ivalue = value;
+        data.edata.rvalue = value;
+        data.edata.fieldtype = DBF_LONG;
+        data.edata.valueCount = 1;
+        data.edata.monitorCount++;
         break;
-    case pvFloat:
-    case pvDouble:
-    {
-        //cout  << "float & double " << convert->toDouble(pvScalar) << endl;
+    }
+    case pvFloat: case pvDouble: {
         double value = convert->toDouble(pvScalar);
-        kData.edata.rvalue = value;
-        kData.edata.ivalue = value;
-        kData.edata.fieldtype  = DBF_DOUBLE;
-        kData.edata.valueCount = 1;
-        kData.edata.monitorCount++;
-    }
-        break;
-    case pvString:
-    {
-        //cout  << "string " << endl;
-        PVStringPtr pvString = std::dynamic_pointer_cast<PVString>(pvScalar);
-        string value = pvString->get();
-        int len = value.length();
-        const char * data = value.data();
-        int length = len + 1;
-        if(length>kData.edata.dataSize)
-        {
-            if(kData.edata.dataSize!=0 && (kData.edata.dataB != (void*) Q_NULLPTR)) free(kData.edata.dataB);
-            kData.edata.dataB = (void*) malloc((size_t) length);
-        }
-        memcpy(kData.edata.dataB,data,len);
-        char *yyy = (char *)(kData.edata.dataB);
-        yyy[len] = '\0';
-        kData.edata.dataSize = length;
-        kData.edata.fieldtype  = DBF_STRING;
-        kData.edata.valueCount = 1;
-        kData.edata.monitorCount++;
-    }
+        data.edata.rvalue = value;
+        data.edata.ivalue = value;
+        data.edata.fieldtype = DBF_DOUBLE;
+        data.edata.valueCount = 1;
+        data.edata.monitorCount++;
         break;
     }
-
+    case pvString: {
+        PVStringPtr value = std::dynamic_pointer_cast<PVString>(pvScalar);
+        string text = value->get();
+        if(text.size() >= (size_t) std::numeric_limits<int>::max())
+            throw std::length_error("EPICS4 scalar string exceeds data size limit");
+        payload.assign(text.begin(), text.end());
+        payload.push_back('\0');
+        payloadUpdated = true;
+        data.edata.dataSize = (int) payload.size();
+        data.edata.fieldtype = DBF_STRING;
+        data.edata.valueCount = 1;
+        data.edata.monitorCount++;
+        break;
+    }
+    }
 }
 
-void PVAInterface::getEnumData(PVStructurePtr const & pvStructure)
+void PVAInterface::getEnumData(PVStructurePtr const &pvStructure, knobData &data)
 {
     PVFieldPtr pvAlarmField = pvStructure->getSubField<PVStructure>("alarm");
     if(pvAlarmField) {
         Alarm alarm;
         PVAlarm pvAlarm;
-        bool result;
-        result = pvAlarm.attach(pvAlarmField);
-        if(result) {
+        if(pvAlarm.attach(pvAlarmField)) {
             pvAlarm.get(alarm);
-            int sev = alarm.getSeverity();
-            kData.edata.severity = sev;
-            kData.edata.status = (sev==0 ? 0 : 17);
+            data.edata.severity = alarm.getSeverity();
+            data.edata.status = (data.edata.severity == 0 ? 0 : 17);
         }
     }
     PVIntPtr pvIndex = pvStructure->getSubField<PVInt>("value.index");
     if(!pvIndex) return;
     int32 index = pvIndex->get();
-    kData.edata.ivalue = index;
-    kData.edata.rvalue = index;
-    kData.edata.valueCount = 1;
-    kData.edata.monitorCount++;
+    data.edata.ivalue = index;
+    data.edata.rvalue = index;
+    data.edata.valueCount = 1;
+    data.edata.monitorCount++;
 }
 
 template <typename pureData>
-void PVAInterface::fillData(pureData const &array, size_t length, knobData* kPtr) {
-    if(length>0) {
-        int size = sizeof(array[0]);
-        if((length * size) > (size_t) kPtr->edata.dataSize) {
-            if(kPtr->edata.dataB != (void*) Q_NULLPTR) free(kPtr->edata.dataB);
-            kPtr->edata.dataB = (void*) malloc(length * size);
-            kPtr->edata.dataSize = length * size;
-        }
-        memcpy(kPtr->edata.dataB, &array[0],  length * size);
+void PVAInterface::fillData(pureData const &array, size_t length, knobData &data,
+                            std::vector<char> &payload, bool &payloadUpdated)
+{
+    if(length > 0) {
+        const size_t elementSize = sizeof(array[0]);
+        if(length > payload.max_size() / elementSize)
+            throw std::length_error("EPICS4 monitor array is too large");
+        const size_t byteCount = length * elementSize;
+        if(byteCount > (size_t) std::numeric_limits<int>::max())
+            throw std::length_error("EPICS4 monitor array exceeds data size limit");
+        payload.resize(byteCount);
+        memcpy(payload.data(), &array[0], byteCount);
+        payloadUpdated = true;
+        data.edata.dataSize = qMax(data.edata.dataSize, (int) byteCount);
     }
-    kData.edata.valueCount = length;
-    kData.edata.monitorCount++;
+    data.edata.valueCount = (int) length;
+    data.edata.monitorCount++;
 }
 
-
-void PVAInterface::getScalarArrayData(PVStructurePtr const & pvStructure)
+void PVAInterface::getScalarArrayData(PVStructurePtr const &pvStructure, knobData &data,
+                                      std::vector<char> &payload, bool &payloadUpdated)
 {
     PVScalarArrayPtr pva = pvStructure->getSubField<PVScalarArray>("value");
     if(!pva) return;
@@ -1506,162 +1546,107 @@ void PVAInterface::getScalarArrayData(PVStructurePtr const & pvStructure)
     int length = pva->getLength();
 
     switch(scalarType) {
-
     case pvBoolean:
         message("array of pvBoolean not yet supported", errorMessage);
-        break;
-
+        return;
     case pvString: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_STRING;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
+        data.edata.fieldtype = DBF_STRING;
+        if(length < 1) {
+            data.edata.valueCount = 0;
+            data.edata.monitorCount++;
             return;
         }
-        PVStringArrayPtr ArrayData = std::static_pointer_cast<PVStringArray> (pva);
-        shared_vector<const string> array(ArrayData->view());
-        kData.edata.fieldtype = DBF_STRING;
-        int numBytes = 0;
-        for(int i=0; i<length; ++i)
-        {
-            numBytes += array[i].length();
+        PVStringArrayPtr arrayData = std::static_pointer_cast<PVStringArray>(pva);
+        shared_vector<const string> array(arrayData->view());
+        size_t byteCount = (size_t) length + 1;
+        for(int i = 0; i < length; ++i) {
+            if(array[i].size() > std::numeric_limits<size_t>::max() - byteCount)
+                throw std::length_error("EPICS4 string array is too large");
+            byteCount += array[i].size();
         }
-        numBytes += length + 1;
-        if(numBytes>kData.edata.dataSize) {
-            if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-            kData.edata.dataB = (void*) malloc(numBytes);
-            kData.edata.dataSize = numBytes;
+        if(byteCount > (size_t) std::numeric_limits<int>::max())
+            throw std::length_error("EPICS4 string array exceeds data size limit");
+        payload.assign(byteCount, '\0');
+        char *ptr = payload.data();
+        for(int i = 0; i < length; ++i) {
+            const string &value = array[i];
+            memcpy(ptr, value.data(), value.size());
+            ptr += value.size();
+            *ptr++ = '\033';
         }
-        char * ptr = static_cast<char*>(kData.edata.dataB);
-        for(int i=0; i<length; ++i)
-        {
-            const string value = array[i];
-            int len = value.length();
-            memcpy(ptr,value.data(),len);
-            ptr += len;
-            ptr[0] = '\033'; ++ptr;
-        }
-        ptr--;
-        ptr[0] = '\0';
-        kData.edata.valueCount = length;
-        kData.edata.monitorCount++;
+        *(ptr - 1) = '\0';
+        payloadUpdated = true;
+        data.edata.dataSize = qMax(data.edata.dataSize, (int) byteCount);
+        data.edata.valueCount = length;
+        data.edata.monitorCount++;
         return;
     }
     case pvByte: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_CHAR;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVByteArrayPtr ArrayData = std::static_pointer_cast<PVByteArray> (pva);
-        shared_vector<const int8> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_CHAR;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_CHAR;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVByteArrayPtr arrayData = std::static_pointer_cast<PVByteArray>(pva);
+        shared_vector<const int8> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
     case pvUByte: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_CHAR;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVUByteArrayPtr ArrayData = std::static_pointer_cast<PVUByteArray> (pva);
-        shared_vector<const uint8> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_CHAR;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_CHAR;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVUByteArrayPtr arrayData = std::static_pointer_cast<PVUByteArray>(pva);
+        shared_vector<const uint8> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
     case pvShort: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_INT;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVShortArrayPtr ArrayData = std::static_pointer_cast<PVShortArray> (pva);
-        shared_vector<const int16> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_INT;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_INT;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVShortArrayPtr arrayData = std::static_pointer_cast<PVShortArray>(pva);
+        shared_vector<const int16> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
     case pvUShort: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_INT;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVUShortArrayPtr ArrayData = std::static_pointer_cast<PVUShortArray> (pva);
-        shared_vector<const uint16> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_INT;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_INT;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVUShortArrayPtr arrayData = std::static_pointer_cast<PVUShortArray>(pva);
+        shared_vector<const uint16> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
     case pvInt: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_LONG;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVIntArrayPtr ArrayData = std::static_pointer_cast<PVIntArray> (pva);
-        shared_vector<const int32> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_LONG;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_LONG;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVIntArrayPtr arrayData = std::static_pointer_cast<PVIntArray>(pva);
+        shared_vector<const int32> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
     case pvUInt: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_LONG;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVUIntArrayPtr ArrayData = std::static_pointer_cast<PVUIntArray> (pva);
-        shared_vector<const uint32> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_LONG;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_LONG;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVUIntArrayPtr arrayData = std::static_pointer_cast<PVUIntArray>(pva);
+        shared_vector<const uint32> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
-    case pvLong:
-    case pvULong:
+    case pvLong: case pvULong:
         requester->message("array of pvLong not yet supported", errorMessage);
         return;
-
     case pvFloat: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_FLOAT;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVFloatArrayPtr ArrayData = std::static_pointer_cast<PVFloatArray> (pva);
-        shared_vector<const float> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_FLOAT;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_FLOAT;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVFloatArrayPtr arrayData = std::static_pointer_cast<PVFloatArray>(pva);
+        shared_vector<const float> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
         return;
     }
-
-
     case pvDouble: {
-        if(length<1) {
-            kData.edata.fieldtype = DBF_DOUBLE;
-            kData.edata.valueCount = 0;
-            kData.edata.monitorCount++;
-            return;
-        }
-        PVDoubleArrayPtr ArrayData = std::static_pointer_cast<PVDoubleArray> (pva);
-        shared_vector<const double> xxx(ArrayData->view());
-        kData.edata.fieldtype = DBF_DOUBLE;
-        fillData(xxx, length, &kData);
+        data.edata.fieldtype = DBF_DOUBLE;
+        if(length < 1) { data.edata.valueCount = 0; data.edata.monitorCount++; return; }
+        PVDoubleArrayPtr arrayData = std::static_pointer_cast<PVDoubleArray>(pva);
+        shared_vector<const double> array(arrayData->view());
+        fillData(array, length, data, payload, payloadUpdated);
+        return;
     }
     }
 }
