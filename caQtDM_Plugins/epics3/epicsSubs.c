@@ -670,12 +670,13 @@ void clearEvent(void * ptr)
 {
     int status;
     connectInfo *info = (connectInfo *) ptr;
+    if(info == (connectInfo *) 0) return;
 
     if(optimizeConnections) {
 
         knobData kData;
-        C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
-        if(kData.index == -1) return;
+        if(!C_GetMutexKnobDataIfCurrent(
+                mutexKnobdataPtr, info->index, info->generation, &kData)) return;
 
         PrepareDeviceIO();
 
@@ -684,7 +685,8 @@ void clearEvent(void * ptr)
         C_DataLock(mutexKnobdataPtr, &kData);
         kData.edata.connected = false;
         kData.edata.unconnectCount = 0;
-        C_SetMutexKnobData(mutexKnobdataPtr, kData.index, kData);
+        C_SetMutexKnobDataIfCurrent(
+            mutexKnobdataPtr, info->index, info->generation, &kData);
         C_DataUnlock(mutexKnobdataPtr, &kData);
 
     } else {
@@ -719,8 +721,8 @@ void addEvent(void * ptr)
 
         PrepareDeviceIO();
 
-        C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
-        if(kData.index == -1) return;
+        if(!C_GetMutexKnobDataIfCurrent(
+                mutexKnobdataPtr, info->index, info->generation, &kData)) return;
 
         PRINT(printf("recreateConnection -- %s %d %d %d %d\n", info->pv, info->evID, info->index, info->connected, info->evAdded));
         EpicsReconnect(&kData);
@@ -736,8 +738,8 @@ void addEvent(void * ptr)
 
             PrepareDeviceIO();
 
-            C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
-            if(kData.index == -1) return;
+            if(!C_GetMutexKnobDataIfCurrent(
+                    mutexKnobdataPtr, info->index, info->generation, &kData)) return;
 
             C_DataLock(mutexKnobdataPtr, &kData);
             PRINT(printf("addEvent -- %s %d %d %d %d\n", info->pv, info->evID, info->index, info->connected, info->evAdded));
@@ -748,7 +750,8 @@ void addEvent(void * ptr)
             if (status != ECA_NORMAL) {
                 PRINT(printf("ca_add_array_event:\n"" %s\n", ca_message_text[CA_EXTRACT_MSG_NO(status)]));
             }
-            C_SetMutexKnobData(mutexKnobdataPtr, kData.index, kData);
+            C_SetMutexKnobDataIfCurrent(
+                mutexKnobdataPtr, info->index, info->generation, &kData);
 
             C_DataUnlock(mutexKnobdataPtr, &kData);
         }

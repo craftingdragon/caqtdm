@@ -964,6 +964,45 @@ void TestCaQtDM_Lib::checkedReceivedCWrapperRejectsStaleGeneration()
     QCOMPARE(updates.count(), 2);
 }
 
+void TestCaQtDM_Lib::checkedStoreCWrapperRejectsStaleGeneration()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData initial = {};
+    initial.index = index;
+    const uint64_t oldGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, index, initial);
+    QVERIFY(oldGeneration != 0);
+
+    knobData oldUpdate;
+    QVERIFY(C_GetMutexKnobDataIfCurrent(m_mutexKnobData, index, oldGeneration, &oldUpdate));
+    oldUpdate.edata.rvalue = 11.0;
+    QVERIFY(C_SetMutexKnobDataIfCurrent(m_mutexKnobData, index, oldGeneration, &oldUpdate));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(index).edata.rvalue, 11.0);
+
+    initial.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, initial);
+    const int reusedIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    QCOMPARE(reusedIndex, index);
+    knobData current = {};
+    current.index = reusedIndex;
+    const uint64_t currentGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, reusedIndex, current);
+    QVERIFY(currentGeneration != 0);
+    QVERIFY(currentGeneration != oldGeneration);
+
+    oldUpdate.edata.rvalue = 22.0;
+    QVERIFY(!C_SetMutexKnobDataIfCurrent(
+        m_mutexKnobData, reusedIndex, oldGeneration, &oldUpdate));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 0.0);
+
+    QVERIFY(C_GetMutexKnobDataIfCurrent(
+        m_mutexKnobData, reusedIndex, currentGeneration, &current));
+    current.edata.rvalue = 33.0;
+    QVERIFY(C_SetMutexKnobDataIfCurrent(
+        m_mutexKnobData, reusedIndex, currentGeneration, &current));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 33.0);
+}
+
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()
 {
     const int firstIndex = m_mutexKnobData->GetMutexKnobDataIndex();
