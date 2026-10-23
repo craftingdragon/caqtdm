@@ -1028,6 +1028,13 @@ extern "C" int C_GetMutexKnobDataIfCurrent(
     return p->GetMutexKnobDataIfCurrent(
         MutexKnobData::MonitorHandle(index, generation), data);
 }
+extern "C" int C_SetMutexKnobDataReceivedIfCurrent(
+    MutexKnobData* p, int index, uint64_t generation, knobData *kData)
+{
+    if(p == Q_NULLPTR || generation == 0) return false;
+    return p->SetMutexKnobDataReceivedIfCurrent(
+        MutexKnobData::MonitorHandle(index, generation), kData);
+}
 extern "C" int C_SetMutexKnobDataConnectedIfCurrent(
     MutexKnobData* p, int index, uint64_t generation, int connected)
 {

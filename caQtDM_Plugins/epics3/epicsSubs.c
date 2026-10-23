@@ -248,11 +248,13 @@ static void access_rights_handler(struct access_rights_handler_args args)
     PrepareDeviceIO();
 
     info = (connectInfo *) ca_puser(args.chid);
-    C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
+    if(info == (connectInfo *) 0 ||
+       !C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index, info->generation, &kData))
+        return;
     kData.edata.accessW = ca_write_access(args.chid);
     kData.edata.accessR = ca_read_access(args.chid);
     kData.edata.monitorCount = info->event;
-    C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
+    C_SetMutexKnobDataReceivedIfCurrent(mutexKnobdataPtr, info->index, info->generation, &kData);
     //printf("access rights callback %d %d %d\n",  kData.edata.accessW, kData.edata.accessR, kData.edata.monitorCount);
     return;
 }

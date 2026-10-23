@@ -63,6 +63,7 @@ private slots:
     void monitorHandleRejectsCallbacksAfterSlotReuse();
     void checkedConnectionUpdateRejectsStaleHandle();
     void checkedConnectionCWrapperRejectsStaleGeneration();
+    void checkedReceivedCWrapperRejectsStaleGeneration();
     void monitorRecordAddressSurvivesStoreGrowth();
 
 private:

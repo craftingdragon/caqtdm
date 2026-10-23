@@ -42,6 +42,8 @@ extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_SetMutexKnobDataConnected(MutexK
 extern CAQTDM_LIBSHARED_EXPORT uint64_t C_GetMutexKnobDataGeneration(MutexKnobData* p, int indx);
 extern CAQTDM_LIBSHARED_EXPORT int C_GetMutexKnobDataIfCurrent(
     MutexKnobData* p, int indx, uint64_t generation, knobData *data);
+extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataReceivedIfCurrent(
+    MutexKnobData* p, int indx, uint64_t generation, knobData *kData);
 extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataConnectedIfCurrent(
     MutexKnobData* p, int indx, uint64_t generation, int connected);
 extern CAQTDM_LIBSHARED_EXPORT MutexKnobData* C_SetMutexKnobDataReceived(MutexKnobData* p, knobData *kData);
