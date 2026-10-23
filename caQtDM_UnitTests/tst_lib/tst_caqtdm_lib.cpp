@@ -816,6 +816,51 @@ void TestCaQtDM_Lib::monitorHandleRejectsCallbacksAfterSlotReuse()
     QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 40.0);
 }
 
+void TestCaQtDM_Lib::checkedConnectionUpdateRejectsStaleHandle()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData oldRecord = {};
+    oldRecord.index = index;
+    oldRecord.dispW = Q_NULLPTR;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    const MutexKnobData::MonitorHandle oldHandle = m_mutexKnobData->GetMutexKnobDataHandle(index);
+    QVERIFY(oldHandle.isValid());
+
+    QSignalSpy updates(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget);
+    QVERIFY(updates.isValid());
+    QVERIFY(m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(oldHandle, true));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(index).edata.connected, 1);
+    QCOMPARE(updates.count(), 0);
+
+    oldRecord.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    const int reusedIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    QCOMPARE(reusedIndex, index);
+
+    knobData currentRecord = {};
+    currentRecord.index = reusedIndex;
+    m_mutexKnobData->SetMutexKnobData(reusedIndex, currentRecord);
+    const MutexKnobData::MonitorHandle currentHandle =
+        m_mutexKnobData->GetMutexKnobDataHandle(reusedIndex);
+    QVERIFY(currentHandle.isValid());
+
+    QVERIFY(!m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(oldHandle, true));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
+    QCOMPARE(updates.count(), 0);
+
+    QVERIFY(!m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(oldHandle, false));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
+    QCOMPARE(updates.count(), 0);
+
+    QVERIFY(m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(currentHandle, true));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 1);
+    QCOMPARE(updates.count(), 0);
+
+    QVERIFY(m_mutexKnobData->SetMutexKnobDataConnectedIfCurrent(currentHandle, false));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.connected, 0);
+    QCOMPARE(updates.count(), 1);
+}
+
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()
 {
     const int firstIndex = m_mutexKnobData->GetMutexKnobDataIndex();

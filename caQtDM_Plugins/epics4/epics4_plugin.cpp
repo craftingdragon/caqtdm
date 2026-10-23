@@ -176,6 +176,7 @@ private:
     CreateRequest::shared_pointer createRequest;
     MutexKnobData *mutexKnobData;
     int index;
+    MutexKnobData::MonitorHandle monitorHandle;
     Epics4RequesterPtr requester;
     CallbackThreadPtr callbackThread;
     bool gotFirstConnect;
@@ -641,6 +642,7 @@ PVAInterface::PVAInterface(
       createRequest(CreateRequest::create()),
       mutexKnobData(mutexKnobData),
       index(index),
+      monitorHandle(mutexKnobData->GetMutexKnobDataHandle(index)),
       requester(requester),
       callbackThread(callbackThread),
       gotFirstConnect(false),
@@ -730,7 +732,7 @@ void PVAInterface::channelStateChange(bool isConnected)
              << "fullName" << QString::fromStdString(pvaChannel->getFullName())
              << "isConnected" << (isConnected ? "true" : "false");
     }
-    if(gotFirstConnect) mutexKnobData->SetMutexKnobDataConnected(index, isConnected);
+    if(gotFirstConnect) mutexKnobData->SetMutexKnobDataConnectedIfCurrent(monitorHandle, isConnected);
     if(!isConnected || gotFirstConnect) return;
     callbackType = interface_t;
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "queue request";
@@ -1239,7 +1241,7 @@ void PVAInterface::createMonitor()
         pvaMonitorRequester = PVAMonitorRequesterPtr(new PVAMonitorRequester(shared_from_this()));
         monitor = pvaChannel->getChannel()->createMonitor(pvaMonitorRequester,pvRequest);
         gotFirstConnect = true;
-        mutexKnobData->SetMutexKnobDataConnected(index,true);
+        mutexKnobData->SetMutexKnobDataConnectedIfCurrent(monitorHandle, true);
     } catch (std::runtime_error e) {
         cerr << "exception " << e.what() << endl;
         return;

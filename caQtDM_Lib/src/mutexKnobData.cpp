@@ -954,6 +954,40 @@ void MutexKnobData::SetMutexKnobDataConnected(int index, int connected)
     }
 
 }
+
+bool MutexKnobData::SetMutexKnobDataConnectedIfCurrent(MonitorHandle handle, int connected)
+{
+    if(!handle.isValid()) return false;
+
+    knobData updateSnapshot;
+    QWidget *widget = Q_NULLPTR;
+    {
+        QMutexLocker locker(&mutex);
+        if(handle.index >= KnobDataArraySize || KnobData[handle.index].index != handle.index ||
+           monitorGenerations[handle.index] != handle.generation)
+            return false;
+
+        KnobData[handle.index].edata.connected = connected;
+
+#ifdef epics4
+        connectInfoShort *tmp = (connectInfoShort *) KnobData[handle.index].edata.info;
+        if(tmp != (connectInfoShort *) Q_NULLPTR) tmp->connected = connected;
+#endif
+
+        if(!connected) {
+            updateSnapshot = KnobData[handle.index];
+            widget = (QWidget *) updateSnapshot.dispW;
+        }
+    }
+
+    if(!connected) {
+        char units[] = " ";
+        char fec[] = " ";
+        char dataString[] = " ";
+        UpdateWidget(handle.index, widget, units, fec, dataString, updateSnapshot);
+    }
+    return true;
+}
 extern "C" MutexKnobData* C_SetMutexKnobDataConnected(MutexKnobData* p, int index, int connected)
 {
     p->SetMutexKnobDataConnected(index,connected);

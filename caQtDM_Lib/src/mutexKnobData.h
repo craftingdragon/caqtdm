@@ -99,6 +99,7 @@ public:
     void timerEvent(QTimerEvent *);
 
     void SetMutexKnobDataConnected(int indx, int connected);
+    bool SetMutexKnobDataConnectedIfCurrent(MonitorHandle handle, int connected);
 
     void UpdateWidget(int indx, QWidget* w,  char* units, char* fec, char* statusString, knobData knb);
     void UpdateTextLine(char *message, char *name);
