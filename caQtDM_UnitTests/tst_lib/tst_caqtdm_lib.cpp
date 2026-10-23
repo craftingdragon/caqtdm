@@ -31,6 +31,7 @@
 #include <caspinbox.h>
 #include <gensoftpv.h>
 
+#include <QSignalSpy>
 #include <cfloat>
 #include <climits>
 
@@ -758,6 +759,61 @@ void TestCaQtDM_Lib::updateForDestroyedMonitorWidgetIsIgnored()
     delete static_cast<QMutex *>(retired.mutex);
     retired.mutex = Q_NULLPTR;
     m_mutexKnobData->SetMutexKnobData(index, retired);
+}
+
+void TestCaQtDM_Lib::monitorHandleRejectsCallbacksAfterSlotReuse()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData oldRecord = {};
+    oldRecord.index = index;
+    oldRecord.edata.rvalue = 5.0;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+
+    const MutexKnobData::MonitorHandle oldHandle = m_mutexKnobData->GetMutexKnobDataHandle(index);
+    QVERIFY(oldHandle.isValid());
+
+    oldRecord.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataHandle(index).isValid(), false);
+
+    const int reusedIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    QCOMPARE(reusedIndex, index);
+    knobData currentRecord = {};
+    currentRecord.index = reusedIndex;
+    currentRecord.edata.rvalue = 10.0;
+    m_mutexKnobData->SetMutexKnobData(reusedIndex, currentRecord);
+
+    const MutexKnobData::MonitorHandle currentHandle =
+        m_mutexKnobData->GetMutexKnobDataHandle(reusedIndex);
+    QVERIFY(currentHandle.isValid());
+    QCOMPARE(currentHandle.index, oldHandle.index);
+    QVERIFY(currentHandle.generation > oldHandle.generation);
+
+    knobData copied = {};
+    QVERIFY(!m_mutexKnobData->GetMutexKnobDataIfCurrent(oldHandle, &copied));
+    QVERIFY(m_mutexKnobData->GetMutexKnobDataIfCurrent(currentHandle, &copied));
+    QCOMPARE(copied.edata.rvalue, 10.0);
+
+    knobData staleWrite = currentRecord;
+    staleWrite.edata.rvalue = 20.0;
+    QVERIFY(!m_mutexKnobData->SetMutexKnobDataIfCurrent(oldHandle, staleWrite));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 10.0);
+
+    QSignalSpy updates(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget);
+    QVERIFY(updates.isValid());
+    knobData staleUpdate = currentRecord;
+    staleUpdate.edata.rvalue = 30.0;
+    QVERIFY(!m_mutexKnobData->SetMutexKnobDataReceivedIfCurrent(oldHandle, &staleUpdate));
+    QCOMPARE(updates.count(), 0);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 10.0);
+
+    knobData currentUpdate = currentRecord;
+    currentUpdate.edata.fieldtype = caDOUBLE;
+    currentUpdate.edata.rvalue = 40.0;
+    currentUpdate.edata.monitorCount = 1;
+    QVERIFY(m_mutexKnobData->SetMutexKnobDataReceivedIfCurrent(currentHandle, &currentUpdate));
+    QCOMPARE(updates.count(), 1);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 40.0);
 }
 
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()

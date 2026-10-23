@@ -60,6 +60,7 @@ private slots:
     void computeNumericMaxMinPrecUpdatesWhenChannelChanges();
     void receivedDataForInactiveMonitorIsIgnored();
     void updateForDestroyedMonitorWidgetIsIgnored();
+    void monitorHandleRejectsCallbacksAfterSlotReuse();
     void monitorRecordAddressSurvivesStoreGrowth();
 
 private:

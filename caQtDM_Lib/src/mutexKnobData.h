@@ -56,6 +56,18 @@ public:
 
     enum UpdateType {UpdateTimed=0, UpdateDirect};
 
+    // A slot index can be reused. Carry the generation with it whenever work
+    // may outlive the monitor registration that created it.
+    struct MonitorHandle {
+        int index;
+        quint64 generation;
+
+        MonitorHandle() : index(-1), generation(0) {}
+        MonitorHandle(int indexValue, quint64 generationValue)
+            : index(indexValue), generation(generationValue) {}
+        bool isValid() const { return index >= 0 && generation != 0; }
+    };
+
     MutexKnobData();
 
     ~MutexKnobData();
@@ -68,6 +80,12 @@ public:
     knobData GetMutexKnobData(int indx);
     knobData *GetMutexKnobDataPtr(int indx);
     void SetMutexKnobData(int indx, knobData data);
+    // Checked operations require caller-owned copies. They validate the
+    // handle and access the record under the store mutex.
+    MonitorHandle GetMutexKnobDataHandle(int index);
+    bool GetMutexKnobDataIfCurrent(MonitorHandle handle, knobData *data);
+    bool SetMutexKnobDataIfCurrent(MonitorHandle handle, const knobData &data);
+    bool SetMutexKnobDataReceivedIfCurrent(MonitorHandle handle, knobData *kData);
     int GetMutexKnobDataIndex();
     int GetMutexKnobDataSize();
     void SetMutexKnobDataReceived(knobData *kData);
@@ -114,6 +132,7 @@ private:
     // Records remain at stable addresses because plugins may retain the
     // pointers returned by GetMutexKnobDataPtr() while new monitors are added.
     std::deque<knobData> KnobData;
+    QVector<quint64> monitorGenerations;
     int KnobDataArraySize;
     int timerId, prvRepetitionRate;
     QMap<QString, int> softPV_WidgetList;
@@ -134,5 +153,6 @@ private:
     QList<QPair<QString,QString> > defaultReplaceUnitsPairList;
     QList<QPair<QString,QString> > replaceUnitsPairList;
     QStringList createUnitReplacementList();
+    bool SetMutexKnobDataReceivedImpl(knobData *kData, const MonitorHandle *expectedHandle);
 };
 #endif // MUTEXKNOBDATA_H

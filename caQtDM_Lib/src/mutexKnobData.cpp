@@ -44,6 +44,7 @@ MutexKnobData::MutexKnobData()
 {
     KnobDataArraySize=500;
     KnobData.resize(KnobDataArraySize);
+    monitorGenerations.fill(0, KnobDataArraySize);
     for(int i=0; i < KnobDataArraySize; i++){
         KnobData[i].index  = -1;
         KnobData[i].thisW = (void*) Q_NULLPTR;
@@ -442,6 +443,11 @@ int MutexKnobData::GetMutexKnobDataIndex()
     oldsize=KnobDataArraySize;
     newsize = KnobDataArraySize+200;
     KnobData.resize(newsize);
+    const int oldGenerationCount = monitorGenerations.size();
+    monitorGenerations.resize(newsize);
+    for(int i=oldGenerationCount; i < newsize; i++) {
+        monitorGenerations[i] = 0;
+    }
     for(int i=oldsize; i < newsize; i++){
         KnobData[i].index  = -1;
     }
@@ -465,8 +471,53 @@ int MutexKnobData::GetMutexKnobDataSize()
 void MutexKnobData::SetMutexKnobData(int index, knobData data)
 {
     QMutexLocker locker(&mutex);
-    if (index >= 0 && index < KnobDataArraySize)
+    if (index >= 0 && index < KnobDataArraySize) {
+        if (KnobData[index].index == -1 && data.index == index) {
+            ++monitorGenerations[index];
+            if (monitorGenerations[index] == 0)
+                ++monitorGenerations[index];
+        }
         memcpy(&KnobData[index], &data, sizeof(knobData));
+    }
+}
+
+MutexKnobData::MonitorHandle MutexKnobData::GetMutexKnobDataHandle(int index)
+{
+    QMutexLocker locker(&mutex);
+    if (index < 0 || index >= KnobDataArraySize || KnobData[index].index != index ||
+        monitorGenerations[index] == 0)
+        return MonitorHandle();
+    return MonitorHandle(index, monitorGenerations[index]);
+}
+
+bool MutexKnobData::GetMutexKnobDataIfCurrent(MonitorHandle handle, knobData *data)
+{
+    if (!handle.isValid() || data == Q_NULLPTR)
+        return false;
+
+    QMutexLocker locker(&mutex);
+    if (handle.index >= KnobDataArraySize || KnobData[handle.index].index != handle.index ||
+        monitorGenerations[handle.index] != handle.generation || data == &KnobData[handle.index])
+        return false;
+
+    memcpy(data, &KnobData[handle.index], sizeof(knobData));
+    memcpy(&data->edata, &KnobData[handle.index].edata, sizeof(epicsData));
+    return true;
+}
+
+bool MutexKnobData::SetMutexKnobDataIfCurrent(MonitorHandle handle, const knobData &data)
+{
+    if (!handle.isValid())
+        return false;
+
+    QMutexLocker locker(&mutex);
+    if (handle.index >= KnobDataArraySize || KnobData[handle.index].index != handle.index ||
+        monitorGenerations[handle.index] != handle.generation || data.index != handle.index ||
+        &data == &KnobData[handle.index])
+        return false;
+
+    memcpy(&KnobData[handle.index], &data, sizeof(knobData));
+    return true;
 }
 
 extern "C" MutexKnobData* C_SetMutexKnobData(MutexKnobData* p, int index, knobData data)
@@ -554,8 +605,20 @@ extern "C" long long C_CurrentTimeMs() {
  * update array with the received data
  */
 void MutexKnobData::SetMutexKnobDataReceived(knobData *kData) {
+    SetMutexKnobDataReceivedImpl(kData, Q_NULLPTR);
+}
+
+bool MutexKnobData::SetMutexKnobDataReceivedIfCurrent(MonitorHandle handle, knobData *kData)
+{
+    if (!handle.isValid() || kData == Q_NULLPTR)
+        return false;
+    return SetMutexKnobDataReceivedImpl(kData, &handle);
+}
+
+bool MutexKnobData::SetMutexKnobDataReceivedImpl(knobData *kData, const MonitorHandle *expectedHandle)
+{
     if (kData == Q_NULLPTR)
-        return;
+        return false;
 
     char units[40];
     char fec[40];
@@ -563,8 +626,12 @@ void MutexKnobData::SetMutexKnobDataReceived(knobData *kData) {
     double diff;
     QMutexLocker locker(&mutex);
     int index = kData->index;
-    if (index < 0 || index >= KnobDataArraySize || KnobData[index].index != index)
-        return;
+    if (index < 0 || index >= KnobDataArraySize || KnobData[index].index != index ||
+        (expectedHandle != Q_NULLPTR &&
+         (expectedHandle->index != index || monitorGenerations[index] != expectedHandle->generation)))
+        return false;
+    if (expectedHandle != Q_NULLPTR && kData == &KnobData[index])
+        return false;
 
     memcpy(&KnobData[index].edata, &kData->edata, sizeof(epicsData));
 
@@ -606,7 +673,6 @@ void MutexKnobData::SetMutexKnobDataReceived(knobData *kData) {
 
     if(myUpdateType == UpdateDirect) {
         if (!suppressUpdates ) {
-            QWidget *dispW = (QWidget*) kData->dispW;
             dataString[0] = '\0';
             qstrncpy(units, kData->edata.units,caqtdm_string_t_length);
             qstrncpy(fec, kData->edata.fec,caqtdm_string_t_length);
@@ -621,14 +687,19 @@ void MutexKnobData::SetMutexKnobDataReceived(knobData *kData) {
                 }
             }
 
+            // Preserve callback mutations and first-update timing while
+            // capturing the stored record before unlocking.
             kData->edata.displayCount = kData->edata.monitorCount;
+            knobData updateSnapshot = KnobData[index];
+            QWidget *dispW = (QWidget*) updateSnapshot.dispW;
             locker.unlock();
-            UpdateWidget(index, dispW, units, fec, dataString, KnobData[index]);
+            UpdateWidget(index, dispW, units, fec, dataString, updateSnapshot);
             kData->edata.lastTimeMs = QDateTime::currentMSecsSinceEpoch();
             kData->edata.initialize = false;
             displayCount++;
         }
     }
+    return true;
 }
 
 int MutexKnobData::getMonitorsPerSecond()
