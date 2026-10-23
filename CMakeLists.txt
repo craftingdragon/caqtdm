@@ -6,6 +6,11 @@ include(caQtDMVersion)
 project(caQtDM VERSION ${CAQTDM_VERSION_BASE} LANGUAGES C CXX)
 set(PROJECT_VERSION_STR "${CAQTDM_VERSION_STR}")
 
+# Do not export inlined/template symbols from caQtDM's DSOes, so they can't be
+# interposed over libQt6Core's copies (e.g. QtPrivate::QPodArrayOps<double>::emplace)
+# and corrupt Qwt's scale construction on FreeBSD (maybe also other platforms). Same flag Qt itself is built with.
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
 include(caQtDMConfig)
 include(caQtDMHelpers)
 

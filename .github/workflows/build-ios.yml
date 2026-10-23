@@ -1,0 +1,541 @@
+name: caQtDM iOS Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - 'caQtDM_docs/**'
+      - 'caQtDM_Tests/**'
+  schedule:
+    - cron: '0 2 * * *'
+
+env:
+  QT_VERSION: 6.12.0
+  OPENSSL_LTS_SERIES: '3.5'
+  QWT_VERSION: v6.3.0
+  EPICS_VERSION: R7.0.10
+  IOS_DEPLOYMENT_TARGET: '18.0'
+  QT_ROOT: ${{ github.workspace }}/.ci-cache/Qt
+  QT_HOST_ROOT: ${{ github.workspace }}/.ci-cache/Qt/6.12.0/macos-host
+  QT_IOS_DEVICE_ROOT: ${{ github.workspace }}/.ci-cache/Qt/6.12.0/ios-device
+  QT_IOS_SIMULATOR_ROOT: ${{ github.workspace }}/.ci-cache/Qt/6.12.0/ios-simulator-arm64
+  OPENSSL_IOS_ROOT: ${{ github.workspace }}/.ci-cache/openssl-ios
+  EPICS_BASE: ${{ github.workspace }}/.ci-cache/ios-deps/epics-base
+  EPICS_HOST_ARCH: darwin-aarch64
+
+jobs:
+  resolve-openssl:
+    name: Resolve latest OpenSSL LTS release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.openssl-version.outputs.version }}
+      commit_sha: ${{ steps.openssl-version.outputs.commit_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Determine latest OpenSSL LTS release
+        id: openssl-version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/ios/resolve-openssl.sh
+
+  build-qt-host:
+    name: Build Qt 6.12.0 macOS host
+    runs-on: macos-15
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      toolchain_key: ${{ steps.toolchain.outputs.key }}
+      host_key: ${{ steps.toolchain.outputs.host_key }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Identify Xcode and SDKs
+        id: toolchain
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_equal "$(uname -m)" arm64 'Runner architecture'
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
+          IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-version)"
+          SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          echo "host_key=xcode${XCODE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "key=xcode${XCODE_VERSION}-ios${IOS_SDK}-sim${SIM_SDK}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore installed Qt host
+        id: cache-host
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_HOST_ROOT }}
+          key: qt-ios-host-v3-${{ runner.os }}-${{ runner.arch }}-qt${{ env.QT_VERSION }}-${{ steps.toolchain.outputs.host_key }}-${{ hashFiles('ci/ios/build-qt-host.sh') }}
+
+      - name: Restore Qt source
+        if: steps.cache-host.outputs.cache-hit != 'true'
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_ROOT }}/${{ env.QT_VERSION }}/source
+          key: qt-ios-source-v1-qt${{ env.QT_VERSION }}
+
+      - name: Ensure build tools
+        if: steps.cache-host.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          command -v cmake || ci_error 'cmake is not installed'
+          if ! command -v ninja >/dev/null; then brew install ninja; fi
+
+      - name: Build and install Qt host
+        if: steps.cache-host.outputs.cache-hit != 'true'
+        run: bash ci/ios/build-qt-host.sh
+
+      - name: Verify installed Qt host
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          bash ci/ios/verify-qt-host.sh "${QT_HOST_ROOT}"
+
+  build-qt-ios:
+    name: Build Qt 6.12.0 ${{ matrix.name }} SDK
+    runs-on: macos-15
+    needs: [build-qt-host, resolve-openssl]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iPhoneOS arm64
+            sdk: iphoneos
+            qt_install_target: ios-device
+            openssl_install_target: iphoneos
+            openssl_cache_target: iphoneos-arm64
+          - name: iOS Simulator arm64
+            sdk: iphonesimulator
+            qt_install_target: ios-simulator-arm64
+            openssl_install_target: iphonesimulator-arm64
+            openssl_cache_target: iphonesimulator-arm64
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Select target directories and verify toolchain
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_equal "$(uname -m)" arm64 'Runner architecture'
+          actual_toolchain="xcode$(xcodebuild -version | awk '/^Xcode / {print $2}')-ios$(xcrun --sdk iphoneos --show-sdk-version)-sim$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          require_equal "${actual_toolchain}" "${{ needs.build-qt-host.outputs.toolchain_key }}" 'Qt host toolchain'
+          {
+            echo "QT_TARGET_ROOT=${QT_ROOT}/${QT_VERSION}/${{ matrix.qt_install_target }}"
+            echo "OPENSSL_VERSION=${{ needs.resolve-openssl.outputs.version }}"
+            echo "OPENSSL_COMMIT_SHA=${{ needs.resolve-openssl.outputs.commit_sha }}"
+            echo "OPENSSL_PREFIX=${OPENSSL_IOS_ROOT}/${{ needs.resolve-openssl.outputs.version }}/${{ matrix.openssl_install_target }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore installed Qt host
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_HOST_ROOT }}
+          key: qt-ios-host-v3-${{ runner.os }}-${{ runner.arch }}-qt${{ env.QT_VERSION }}-${{ needs.build-qt-host.outputs.host_key }}-${{ hashFiles('ci/ios/build-qt-host.sh') }}
+
+      - name: Verify restored Qt host tools
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          bash ci/ios/verify-qt-host.sh "${QT_HOST_ROOT}"
+
+      - name: Restore Qt iOS SDK cache
+        id: cache-qt-target
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_ROOT }}/${{ env.QT_VERSION }}/${{ matrix.qt_install_target }}
+          key: qt-ios-target-v3-${{ runner.os }}-${{ runner.arch }}-qt${{ env.QT_VERSION }}-${{ matrix.qt_install_target }}-${{ needs.build-qt-host.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-openssl${{ needs.resolve-openssl.outputs.version }}-${{ needs.resolve-openssl.outputs.commit_sha }}-${{ hashFiles('ci/ios/build-qt-host.sh', 'ci/ios/build-qt-target.sh', 'ci/ios/build-openssl.sh') }}
+
+      - name: Restore Qt source
+        if: steps.cache-qt-target.outputs.cache-hit != 'true'
+        id: cache-qt-source
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_ROOT }}/${{ env.QT_VERSION }}/source
+          key: qt-ios-source-v1-qt${{ env.QT_VERSION }}
+
+      - name: Download Qt source if needed
+        if: steps.cache-qt-target.outputs.cache-hit != 'true'
+        run: bash ci/ios/ensure-qt-source.sh
+
+      - name: Restore OpenSSL iOS cache
+        id: cache-openssl
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.OPENSSL_IOS_ROOT }}/${{ needs.resolve-openssl.outputs.version }}/${{ matrix.openssl_install_target }}
+          key: openssl-ios-${{ needs.resolve-openssl.outputs.version }}-${{ needs.resolve-openssl.outputs.commit_sha }}-${{ matrix.openssl_cache_target }}-${{ needs.build-qt-host.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-${{ hashFiles('ci/ios/build-openssl.sh') }}
+
+      - name: Ensure build tools
+        if: steps.cache-qt-target.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          command -v cmake || ci_error 'cmake is not installed'
+          if ! command -v ninja >/dev/null; then brew install ninja; fi
+
+      - name: Build OpenSSL for ${{ matrix.name }}
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
+        run: bash ci/ios/build-openssl.sh '${{ matrix.openssl_install_target }}'
+
+      - name: Verify OpenSSL archive
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_file "${OPENSSL_PREFIX}/include/openssl/ssl.h"
+          for lib in ssl crypto; do
+            require_nonempty_file "${OPENSSL_PREFIX}/lib/lib${lib}.a"
+            require_arch "${OPENSSL_PREFIX}/lib/lib${lib}.a" arm64
+          done
+
+      - name: Build Qt for ${{ matrix.name }}
+        if: steps.cache-qt-target.outputs.cache-hit != 'true'
+        run: bash ci/ios/build-qt-target.sh '${{ matrix.sdk }}'
+
+      - name: Verify Qt iOS SDK
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_executable "${QT_TARGET_ROOT}/bin/qmake"
+          require_executable "${QT_TARGET_ROOT}/bin/qt-cmake"
+          for module in QtCore QtCore5Compat QtUiTools QtSvg QtPositioning QtOpcUa QtSerialBus; do
+            require_dir "${QT_TARGET_ROOT}/lib/${module}.framework"
+          done
+          require_file "${QT_TARGET_ROOT}/plugins/opcua/libopen62541_backend.a"
+          require_file "${QT_TARGET_ROOT}/mkspecs/modules/qt_plugin_open62541_backend.pri"
+          require_file "${QT_TARGET_ROOT}/lib/cmake/Qt6Core/Qt6CoreConfig.cmake"
+          require_arch "${QT_TARGET_ROOT}/lib/QtCore.framework/QtCore" arm64
+
+  build-epics:
+    name: Build EPICS 7.0.10 for iOS SDKs
+    runs-on: macos-15
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      toolchain_key: ${{ steps.toolchain.outputs.key }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Identify Xcode and SDKs
+        id: toolchain
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_equal "$(uname -m)" arm64 'Runner architecture'
+          XCODE_VERSION="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
+          IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-version)"
+          SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          echo "key=xcode${XCODE_VERSION}-ios${IOS_SDK}-sim${SIM_SDK}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache EPICS 7.0.10 iOS build
+        id: cache-epics
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.EPICS_BASE }}
+          key: epics-ios-${{ runner.os }}-${{ runner.arch }}-epics${{ env.EPICS_VERSION }}-${{ steps.toolchain.outputs.key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-${{ hashFiles('ci/epics-ios/**') }}
+
+      - name: Build EPICS host tools and iOS libraries
+        if: steps.cache-epics.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --recurse-submodules --branch "${EPICS_VERSION}" \
+            https://github.com/epics-base/epics-base.git "${RUNNER_TEMP}/epics-src"
+          cd "${RUNNER_TEMP}/epics-src"
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/CONFIG_SITE.local" configure/CONFIG_SITE.local
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/os/CONFIG.Common.iosCommon" configure/os/CONFIG.Common.iosCommon
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/os/CONFIG_SITE.Common.iosCommon" configure/os/CONFIG_SITE.Common.iosCommon
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/os/CONFIG_SITE.Common.ios-arm" configure/os/CONFIG_SITE.Common.ios-arm
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/os/CONFIG.Common.ios-sim-arm64" configure/os/CONFIG.Common.ios-sim-arm64
+          cp "${GITHUB_WORKSPACE}/ci/epics-ios/configure/os/CONFIG_SITE.Common.ios-sim-arm64" configure/os/CONFIG_SITE.Common.ios-sim-arm64
+          bash "${GITHUB_WORKSPACE}/ci/epics-ios/prepare-source.sh" "${RUNNER_TEMP}/epics-src"
+
+          make -j"$(sysctl -n hw.ncpu)" EPICS_HOST_ARCH="${EPICS_HOST_ARCH}" IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}"
+          mkdir -p "${EPICS_BASE}/include" "${EPICS_BASE}/lib/ios-arm" "${EPICS_BASE}/lib/ios-sim-arm64"
+          rsync -a include/ "${EPICS_BASE}/include/"
+          rsync -a lib/ios-arm/ "${EPICS_BASE}/lib/ios-arm/"
+          rsync -a lib/ios-sim-arm64/ "${EPICS_BASE}/lib/ios-sim-arm64/"
+
+      - name: Verify EPICS target archives
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          for arch in ios-arm ios-sim-arm64; do
+            for lib in ca Com dbCore dbRecStd nt pvAccess pvAccessCA pvAccessIOC pvaClient pvData pvDatabase qsrv; do
+              require_file "${EPICS_BASE}/lib/${arch}/lib${lib}.a"
+              require_arch "${EPICS_BASE}/lib/${arch}/lib${lib}.a" arm64
+            done
+            nm -g "${EPICS_BASE}/lib/${arch}/libCom.a" | grep -E ' T _osdTimeGetCurrent$' || ci_error "Missing _osdTimeGetCurrent in ${EPICS_BASE}/lib/${arch}/libCom.a"
+          done
+
+  build-ios:
+    name: Build ${{ matrix.name }}
+    runs-on: macos-15
+    needs: [build-qt-host, build-qt-ios, build-epics, resolve-openssl]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iPhoneOS arm64
+            sdk: iphoneos
+            epics_arch: ios-arm
+            qt_install_target: ios-device
+            xcode_destination: generic/platform=iOS
+            openssl_install_target: iphoneos
+            openssl_cache_target: iphoneos-arm64
+          - name: iOS Simulator arm64
+            sdk: iphonesimulator
+            epics_arch: ios-sim-arm64
+            qt_install_target: ios-simulator-arm64
+            xcode_destination: generic/platform=iOS Simulator
+            openssl_install_target: iphonesimulator-arm64
+            openssl_cache_target: iphonesimulator-arm64
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Select target directories
+        run: |
+          set -euo pipefail
+          {
+            echo "QT_TARGET_ROOT=${QT_ROOT}/${QT_VERSION}/${{ matrix.qt_install_target }}"
+            echo "QWT_ROOT=${GITHUB_WORKSPACE}/.ci-cache/qwt-${{ matrix.epics_arch }}"
+            echo "OPENSSL_PREFIX=${OPENSSL_IOS_ROOT}/${{ needs.resolve-openssl.outputs.version }}/${{ matrix.openssl_install_target }}"
+            echo "XCODE_DESTINATION=${{ matrix.xcode_destination }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Restore installed Qt host
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_HOST_ROOT }}
+          key: qt-ios-host-v3-${{ runner.os }}-${{ runner.arch }}-qt${{ env.QT_VERSION }}-${{ needs.build-qt-host.outputs.host_key }}-${{ hashFiles('ci/ios/build-qt-host.sh') }}
+
+      - name: Restore Qt iOS SDK cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.QT_ROOT }}/${{ env.QT_VERSION }}/${{ matrix.qt_install_target }}
+          key: qt-ios-target-v3-${{ runner.os }}-${{ runner.arch }}-qt${{ env.QT_VERSION }}-${{ matrix.qt_install_target }}-${{ needs.build-qt-host.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-openssl${{ needs.resolve-openssl.outputs.version }}-${{ needs.resolve-openssl.outputs.commit_sha }}-${{ hashFiles('ci/ios/build-qt-host.sh', 'ci/ios/build-qt-target.sh', 'ci/ios/build-openssl.sh') }}
+
+      - name: Restore OpenSSL iOS cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.OPENSSL_IOS_ROOT }}/${{ needs.resolve-openssl.outputs.version }}/${{ matrix.openssl_install_target }}
+          key: openssl-ios-${{ needs.resolve-openssl.outputs.version }}-${{ needs.resolve-openssl.outputs.commit_sha }}-${{ matrix.openssl_cache_target }}-${{ needs.build-qt-host.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-${{ hashFiles('ci/ios/build-openssl.sh') }}
+
+      - name: Restore EPICS iOS cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.EPICS_BASE }}
+          key: epics-ios-${{ runner.os }}-${{ runner.arch }}-epics${{ env.EPICS_VERSION }}-${{ needs.build-epics.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-${{ hashFiles('ci/epics-ios/**') }}
+
+      - name: Verify cached dependencies
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          bash ci/ios/verify-qt-host.sh "${QT_HOST_ROOT}"
+          require_executable "${QT_TARGET_ROOT}/bin/qmake"
+          require_executable "${QT_TARGET_ROOT}/bin/qt-cmake"
+          require_equal "$("${QT_TARGET_ROOT}/bin/qmake" -query QT_VERSION)" "${QT_VERSION}" 'Qt target version'
+          require_dir "${QT_TARGET_ROOT}/lib/QtCore.framework"
+          require_dir "${QT_TARGET_ROOT}/lib/QtPositioning.framework"
+          require_dir "${QT_TARGET_ROOT}/lib/QtOpcUa.framework"
+          require_dir "${QT_TARGET_ROOT}/lib/QtSerialBus.framework"
+          require_file "${QT_TARGET_ROOT}/plugins/opcua/libopen62541_backend.a"
+          require_file "${QT_TARGET_ROOT}/mkspecs/modules/qt_plugin_open62541_backend.pri"
+          require_file "${QT_TARGET_ROOT}/lib/cmake/Qt6Core/Qt6CoreConfig.cmake"
+          require_arch "${QT_TARGET_ROOT}/lib/QtCore.framework/QtCore" arm64
+          require_file "${OPENSSL_PREFIX}/include/openssl/ssl.h"
+          require_nonempty_file "${OPENSSL_PREFIX}/lib/libssl.a"
+          require_nonempty_file "${OPENSSL_PREFIX}/lib/libcrypto.a"
+          require_arch "${OPENSSL_PREFIX}/lib/libssl.a" arm64
+          require_arch "${OPENSSL_PREFIX}/lib/libcrypto.a" arm64
+          ACTUAL_TOOLCHAIN="xcode$(xcodebuild -version | awk '/^Xcode / {print $2}')-ios$(xcrun --sdk iphoneos --show-sdk-version)-sim$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          require_equal "${ACTUAL_TOOLCHAIN}" "${{ needs.build-qt-host.outputs.toolchain_key }}" 'Qt host toolchain'
+          require_equal "${ACTUAL_TOOLCHAIN}" "${{ needs.build-epics.outputs.toolchain_key }}" 'EPICS toolchain'
+          for lib in ca Com dbCore dbRecStd nt pvAccess pvAccessCA pvAccessIOC pvaClient pvData pvDatabase qsrv; do
+            require_file "${EPICS_BASE}/lib/${{ matrix.epics_arch }}/lib${lib}.a"
+          done
+
+      - name: Cache Qwt
+        id: cache-qwt
+        uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/.ci-cache/qwt-${{ matrix.epics_arch }}
+          key: qwt-ios-${{ runner.os }}-${{ runner.arch }}-${{ env.QWT_VERSION }}-qt${{ env.QT_VERSION }}-${{ matrix.epics_arch }}-${{ needs.build-qt-host.outputs.toolchain_key }}-ios${{ env.IOS_DEPLOYMENT_TARGET }}-${{ hashFiles('ci/ios/build-qwt.sh', 'ci/ios/build-qt-host.sh', 'ci/ios/build-qt-target.sh') }}
+
+      - name: Build Qwt
+        if: steps.cache-qwt.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash ci/ios/build-qwt.sh '${{ matrix.sdk }}' \
+            "${QWT_ROOT}" \
+            "${QT_TARGET_ROOT}"
+
+      - name: Export caQtDM build environment
+        run: |
+          set -euo pipefail
+          source ci/ios/checks.sh
+          require_nonempty_file "${QWT_ROOT}/lib/libqwt.a"
+          {
+            echo "QTHOME=${QT_TARGET_ROOT}"
+            echo "QWTHOME=${QWT_ROOT}"
+            echo "QWTINCLUDE=${QWT_ROOT}/include"
+            echo "QWTLIB=${QWT_ROOT}/lib"
+            echo "QWTLIBNAME=qwt"
+            echo "QWTVERSION=${QWT_VERSION#v}"
+            echo "EPICS_BASE=${EPICS_BASE}"
+            echo "EPICS_HOST_ARCH=${{ matrix.epics_arch }}"
+            echo "EPICSINCLUDE=${EPICS_BASE}/include"
+            echo "EPICSLIB=${EPICS_BASE}/lib/${{ matrix.epics_arch }}"
+            echo "EPICSEXTENSIONS=/usr/lib/epics/extensions"
+            echo "CAQTDM_COLLECT=${RUNNER_TEMP}/caqtdm-build/caQtDM_Binaries"
+            echo "QTCONTROLS_LIBS=${RUNNER_TEMP}/caqtdm-build/caQtDM_Binaries"
+            echo "QTBASE=${RUNNER_TEMP}/caqtdm-build/caQtDM_Binaries"
+            echo "CAQTDM_GPS=1"
+            echo "CAQTDM_OPCUA=1"
+            echo "CAQTDM_MODBUS=1"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure caQtDM with CMake for ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          CMAKE_BUILD_DIR="${RUNNER_TEMP}/caqtdm-cmake-${{ matrix.epics_arch }}"
+          "${QT_TARGET_ROOT}/bin/qt-cmake" \
+            -S "${GITHUB_WORKSPACE}" \
+            -B "${CMAKE_BUILD_DIR}" \
+            -G Xcode \
+            -DCMAKE_OSX_SYSROOT='${{ matrix.sdk }}' \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
+            -DCMAKE_XCODE_GENERATE_SCHEME=ON \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DQT_HOST_PATH="${QT_HOST_ROOT}" \
+            -DOPENSSL_ROOT_DIR="${OPENSSL_PREFIX}" \
+            -DOPENSSL_INCLUDE_DIR="${OPENSSL_PREFIX}/include" \
+            -DOPENSSL_CRYPTO_LIBRARY="${OPENSSL_PREFIX}/lib/libcrypto.a" \
+            -DOPENSSL_SSL_LIBRARY="${OPENSSL_PREFIX}/lib/libssl.a" \
+            -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DCAQTDM_EPICS_BASE="${EPICS_BASE}" \
+            -DCAQTDM_EPICS_HOST_ARCH='${{ matrix.epics_arch }}' \
+            -DCAQTDM_QWT_HOME="${QWT_ROOT}" \
+            -DCAQTDM_QWT_INCLUDE="${QWT_ROOT}/include" \
+            -DCAQTDM_QWT_LIB="${QWT_ROOT}/lib" \
+            -DCAQTDM_QWT_LIBNAME=qwt \
+            -DCAQTDM_BUILD_GPS=ON \
+            -DCAQTDM_BUILD_MODBUS=ON \
+            -DCAQTDM_BUILD_OPCUA=ON \
+            -DCAQTDM_PYTHONCALC=OFF \
+            -DCAQTDM_WEB=OFF \
+            -DCAQTDM_WITH_TESTS=OFF \
+            -DCAQTDM_NORPATH=ON
+
+      - name: Prepare temporary source tree
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/caqtdm-build"
+          rsync -a --exclude='.git' --exclude='.ci-cache' \
+            "${GITHUB_WORKSPACE}/" "${RUNNER_TEMP}/caqtdm-build/"
+          mkdir -p "${CAQTDM_COLLECT}/designer" "${CAQTDM_COLLECT}/controlsystems"
+
+      - name: Build caQtDM for ${{ matrix.name }}
+        working-directory: ${{ runner.temp }}/caqtdm-build
+        run: |
+          set -euo pipefail
+          source "${GITHUB_WORKSPACE}/ci/ios/checks.sh"
+          SDKROOT="$(xcrun --sdk ${{ matrix.sdk }} --show-sdk-path)" \
+            "${QTHOME}/bin/qmake" all.pro \
+            "CONFIG+=${{ matrix.sdk }}" \
+            QMAKE_IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
+            QMAKE_IOS_DEVICE_ARCHS=arm64 \
+            QMAKE_APPLE_SIMULATOR_ARCHS=arm64 \
+            -after 'SUBDIRS-=caQtDM_Viewer'
+          (
+            cd caQtDM_Viewer
+            SDKROOT="$(xcrun --sdk ${{ matrix.sdk }} --show-sdk-path)" \
+              "${QTHOME}/bin/qmake" caQtDM_Viewer.pro \
+              "CONFIG+=${{ matrix.sdk }}" \
+              QMAKE_IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET}" \
+              QMAKE_IOS_DEVICE_ARCHS=arm64 \
+              QMAKE_APPLE_SIMULATOR_ARCHS=arm64
+          )
+          SDKROOT="$(xcrun --sdk ${{ matrix.sdk }} --show-sdk-path)" \
+            make -j"$(sysctl -n hw.ncpu)"
+          require_nonempty_file "${CAQTDM_COLLECT}/libprcParser.a"
+          require_nonempty_file "${CAQTDM_COLLECT}/libalhParser.a"
+          require_nonempty_file "caQtDM_Plugins/modbus/libmodbus_plugin.a"
+          (
+            cd caQtDM_Viewer
+            SDKROOT="$(xcrun --sdk ${{ matrix.sdk }} --show-sdk-path)" \
+              xcodebuild build \
+              -project caQtDM.xcodeproj \
+              -scheme caQtDM \
+              -configuration Release \
+              -sdk '${{ matrix.sdk }}' \
+              -destination "${XCODE_DESTINATION}" \
+              -destination-timeout 1 \
+              ENABLE_ONLY_ACTIVE_RESOURCES=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY=
+          )
+
+      - name: Verify and archive app
+        working-directory: ${{ runner.temp }}/caqtdm-build
+        run: |
+          set -euo pipefail
+          APP="$(bash "${GITHUB_WORKSPACE}/ci/ios/verify-app.sh" caQtDM_Viewer '${{ matrix.sdk }}' "${QT_TARGET_ROOT}" "${IOS_DEPLOYMENT_TARGET}")"
+          mkdir -p "${GITHUB_WORKSPACE}/artifacts"
+          ditto -c -k --sequesterRsrc --keepParent "${APP}" \
+            "${GITHUB_WORKSPACE}/artifacts/caQtDM-${{ matrix.epics_arch }}.zip"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caQtDM-${{ matrix.epics_arch }}-${{ github.sha }}
+          path: artifacts/caQtDM-${{ matrix.epics_arch }}.zip
+
+      - name: Build caQtDM with CMake for ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          CMAKE_BUILD_DIR="${RUNNER_TEMP}/caqtdm-cmake-${{ matrix.epics_arch }}"
+          xcodebuild build \
+            -project "${CMAKE_BUILD_DIR}/caQtDM.xcodeproj" \
+            -scheme caQtDM \
+            -configuration Release \
+            -sdk '${{ matrix.sdk }}' \
+            -destination "${XCODE_DESTINATION}" \
+            -destination-timeout 1 \
+            ENABLE_ONLY_ACTIVE_RESOURCES=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=
+
+      - name: Verify and archive CMake app
+        run: |
+          set -euo pipefail
+          CMAKE_BUILD_DIR="${RUNNER_TEMP}/caqtdm-cmake-${{ matrix.epics_arch }}"
+          APP="$(bash ci/ios/verify-app.sh "${CMAKE_BUILD_DIR}" '${{ matrix.sdk }}' "${QT_TARGET_ROOT}" "${IOS_DEPLOYMENT_TARGET}")"
+          mkdir -p "${GITHUB_WORKSPACE}/artifacts"
+          ditto -c -k --sequesterRsrc --keepParent "${APP}" \
+            "${GITHUB_WORKSPACE}/artifacts/caQtDM-cmake-${{ matrix.epics_arch }}.zip"
+
+      - name: Upload CMake app artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caQtDM-cmake-${{ matrix.epics_arch }}-${{ github.sha }}
+          path: artifacts/caQtDM-cmake-${{ matrix.epics_arch }}.zip
