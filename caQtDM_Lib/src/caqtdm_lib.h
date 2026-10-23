@@ -41,7 +41,9 @@
 #include <QMutex>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QHash>
 #include <QMap>
+#include <QPointer>
 #include <QtGui>
 #ifndef MOBILE
 #include <QtUiTools>
@@ -515,6 +517,7 @@ public:
     int loopTimerID;
 
     QMap<QString, ControlsInterface*> controlsInterfaces;
+    QHash<int, QPointer<QWidget>> monitorWidgets;
     MutexKnobData *mutexKnobDataP;
     MessageWindow *messageWindowP;
 

@@ -715,6 +715,51 @@ void TestCaQtDM_Lib::computeNumericMaxMinPrecUpdatesWhenChannelChanges()
                                              "T_Spinbox_Live");
 }
 
+void TestCaQtDM_Lib::receivedDataForInactiveMonitorIsIgnored()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData record = {};
+    record.index = index;
+    record.edata.rvalue = 12.5;
+    m_mutexKnobData->SetMutexKnobData(index, record);
+
+    // Match closeEvent's slot retirement before a late plugin callback arrives.
+    record.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, record);
+    record.index = index;
+    record.edata.rvalue = 99.0;
+    m_mutexKnobData->SetMutexKnobDataReceived(&record);
+
+    const knobData retired = m_mutexKnobData->GetMutexKnobData(index);
+    QCOMPARE(retired.index, -1);
+    QCOMPARE(retired.edata.rvalue, 12.5);
+}
+
+void TestCaQtDM_Lib::updateForDestroyedMonitorWidgetIsIgnored()
+{
+    QWidget *widget = new QWidget(m_parentAS);
+    knobData record = {};
+    int specData[NBSPECS] = {0, 0, 0, 0, 0};
+    QString pvRep;
+    const int index = m_caQtDM_Lib->addMonitor(m_parentAS, &record,
+                                                "missing://lifetime-test", widget,
+                                                specData, QMap<QString, QString>(), &pvRep);
+    QVERIFY(index >= 0);
+
+    const knobData update = m_mutexKnobData->GetMutexKnobData(index);
+    delete widget;
+
+    // Keep the old address as a queued update could, but never dereference it.
+    m_caQtDM_Lib->Callback_UpdateWidget(index, widget, QString(), QString(), QString(), update);
+
+    knobData retired = m_mutexKnobData->GetMutexKnobData(index);
+    retired.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, retired);
+    delete static_cast<QMutex *>(retired.mutex);
+    retired.mutex = Q_NULLPTR;
+    m_mutexKnobData->SetMutexKnobData(index, retired);
+}
+
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()
 {
     const int firstIndex = m_mutexKnobData->GetMutexKnobDataIndex();

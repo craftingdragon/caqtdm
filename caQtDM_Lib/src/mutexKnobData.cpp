@@ -554,12 +554,18 @@ extern "C" long long C_CurrentTimeMs() {
  * update array with the received data
  */
 void MutexKnobData::SetMutexKnobDataReceived(knobData *kData) {
+    if (kData == Q_NULLPTR)
+        return;
+
     char units[40];
     char fec[40];
     char dataString[STRING_EXCHANGE_SIZE];
     double diff;
     QMutexLocker locker(&mutex);
     int index = kData->index;
+    if (index < 0 || index >= KnobDataArraySize || KnobData[index].index != index)
+        return;
+
     memcpy(&KnobData[index].edata, &kData->edata, sizeof(epicsData));
 
     /*****************************************************************************************/

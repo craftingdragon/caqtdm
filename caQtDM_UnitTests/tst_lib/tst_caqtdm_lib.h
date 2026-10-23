@@ -58,6 +58,8 @@ private slots:
     void computeNumericMaxMinPrecIgnoresChannelInUserMode();
     void computeNumericMaxMinPrecHonoursMaxChannelPrecision();
     void computeNumericMaxMinPrecUpdatesWhenChannelChanges();
+    void receivedDataForInactiveMonitorIsIgnored();
+    void updateForDestroyedMonitorWidgetIsIgnored();
     void monitorRecordAddressSurvivesStoreGrowth();
 
 private:

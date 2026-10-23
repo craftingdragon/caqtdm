@@ -3951,6 +3951,7 @@ int CaQtDM_Lib::addMonitor(QWidget *thisW, knobData *kData, QString pv, QWidget 
     kData->edata.repRate = rate;   // default 5 Hz
 
     // update data structure
+    monitorWidgets.insert(num, QPointer<QWidget>(w));
     mutexKnobDataP->SetMutexKnobData(num, *kData);
 
     // in case of a soft channel there is nothing to do
@@ -4491,10 +4492,14 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                                        const QString& String,
                                        const knobData& data)
 {
-    Q_UNUSED(indx);
     Q_UNUSED(fec);
 
     if(!AllowsUpdate) return;
+
+    const auto registeredWidget = monitorWidgets.constFind(indx);
+    if (registeredWidget == monitorWidgets.constEnd() ||
+        registeredWidget.value().isNull() || registeredWidget.value().data() != w)
+        return;
 
     // thread mutexknobdata emits to all instances of this class, later we will have to filter on the emit side to enhance performance
     bool thisInstance = false;
@@ -5895,6 +5900,7 @@ void CaQtDM_Lib::closeEvent(QCloseEvent* ce)
     killTimer(loopTimerID);
 
     AllowsUpdate = false;
+    monitorWidgets.clear();
 
     for(int i=0; i < mutexKnobDataP->GetMutexKnobDataSize(); i++) {
 
