@@ -1003,6 +1003,66 @@ void TestCaQtDM_Lib::checkedStoreCWrapperRejectsStaleGeneration()
     QCOMPARE(m_mutexKnobData->GetMutexKnobData(reusedIndex).edata.rvalue, 33.0);
 }
 
+void TestCaQtDM_Lib::checkedMutationRejectsStaleDataBufferUpdate()
+{
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    char *oldBuffer = static_cast<char *>(malloc(8));
+    QVERIFY(oldBuffer != Q_NULLPTR);
+    qstrncpy(oldBuffer, "old", 8);
+
+    knobData oldRecord = {};
+    oldRecord.index = index;
+    oldRecord.edata.dataB = oldBuffer;
+    oldRecord.edata.dataSize = 8;
+    const MutexKnobData::MonitorHandle oldHandle =
+        m_mutexKnobData->SetMutexKnobDataAndGetHandle(index, oldRecord);
+    QVERIFY(oldHandle.isValid());
+
+    oldRecord.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    free(oldBuffer);
+
+    char *currentBuffer = static_cast<char *>(malloc(8));
+    QVERIFY(currentBuffer != Q_NULLPTR);
+    qstrncpy(currentBuffer, "current", 8);
+    knobData currentRecord = {};
+    currentRecord.index = index;
+    currentRecord.edata.dataB = currentBuffer;
+    currentRecord.edata.dataSize = 8;
+    const MutexKnobData::MonitorHandle currentHandle =
+        m_mutexKnobData->SetMutexKnobDataAndGetHandle(index, currentRecord);
+    QVERIFY(currentHandle.isValid());
+
+    bool staleMutationRan = false;
+    QVERIFY(!m_mutexKnobData->UpdateMutexKnobDataIfCurrent(
+        oldHandle, [&staleMutationRan](knobData *record) {
+            staleMutationRan = true;
+            free(record->edata.dataB);
+            record->edata.dataB = static_cast<void *>(malloc(4));
+            record->edata.dataSize = 4;
+        }));
+    QVERIFY(!staleMutationRan);
+
+    knobData currentSnapshot;
+    QVERIFY(m_mutexKnobData->GetMutexKnobDataIfCurrent(currentHandle, &currentSnapshot));
+    QCOMPARE(currentSnapshot.edata.dataB, static_cast<void *>(currentBuffer));
+    QCOMPARE(QString::fromLatin1(static_cast<const char *>(currentSnapshot.edata.dataB)),
+             QStringLiteral("current"));
+
+    QVERIFY(m_mutexKnobData->UpdateMutexKnobDataIfCurrent(
+        currentHandle, [](knobData *record) {
+            qstrncpy(static_cast<char *>(record->edata.dataB), "updated", record->edata.dataSize);
+        }));
+    QVERIFY(m_mutexKnobData->GetMutexKnobDataIfCurrent(currentHandle, &currentSnapshot));
+    QCOMPARE(QString::fromLatin1(static_cast<const char *>(currentSnapshot.edata.dataB)),
+             QStringLiteral("updated"));
+
+    currentSnapshot.edata.dataB = Q_NULLPTR;
+    currentSnapshot.edata.dataSize = 0;
+    QVERIFY(m_mutexKnobData->SetMutexKnobDataIfCurrent(currentHandle, currentSnapshot));
+    free(currentBuffer);
+}
+
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()
 {
     const int firstIndex = m_mutexKnobData->GetMutexKnobDataIndex();

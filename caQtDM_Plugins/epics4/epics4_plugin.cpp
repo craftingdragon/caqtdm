@@ -1263,53 +1263,67 @@ void PVAInterface::gotEnum(PVStructurePtr const & pvStructure)
         message("gotEnum no choices",errorMessage);
         return;
     }
-    choices = pvChoices->view();
-    int enumCount = choices.size();
+    const shared_vector<const string> enumChoices(pvChoices->view());
+    choices = enumChoices;
+    int enumCount = (int) enumChoices.size();
     if(enumCount<=0) {
         message("gotEnum no choices",errorMessage);
         return;
     }
-    kData = mutexKnobData->GetMutexKnobData(index);
-    if(kData.index == -1) return;
-    mutexKnobData->DataLock(&kData);
-    kData.edata.precision = 0;
-    kData.edata.units[0] = '\0';
+    knobData enumData;
+    if(!mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &enumData)) return;
+    mutexKnobData->DataLock(&enumData);
     int dataSize = 0;
     for(int ind = 0; ind < enumCount; ++ind) {
-        const string val = choices[ind];
+        const string val = enumChoices[ind];
         dataSize += val.length() + 1;
     }
     if(dataSize==0) {
         message("gotEnum no choices",errorMessage);
-        mutexKnobData->DataUnlock(&kData);
+        mutexKnobData->DataUnlock(&enumData);
         return;
     }
-    if(dataSize > kData.edata.dataSize) {
-        if(kData.edata.dataSize>0 && (kData.edata.dataB != (void*) Q_NULLPTR)) free(kData.edata.dataB);
-        kData.edata.dataB = (void*) malloc((size_t) dataSize);
-        kData.edata.dataSize = dataSize;
-    }
-    char * ptr = static_cast<char*>(kData.edata.dataB);
-    for(int ind = 0; ind < enumCount; ++ind) {
-        const string val = choices[ind];
-        int len = val.length();
-        memcpy(ptr, val.data(),len);
-        ptr += len;
-        ptr[0] = '\033';
-        ptr++;
-    }
-    ptr--;
-    ptr[0] = '\0';
-    kData.edata.initialize = true;
-    kData.edata.enumCount = enumCount;
-    kData.edata.fieldtype  = DBF_ENUM;
-    kData.edata.accessR = 1;
-    kData.edata.accessW = 1;
-    fillNtMetadata(kData);
+    bool allocationSucceeded = true;
+    bool updated = mutexKnobData->UpdateMutexKnobDataIfCurrent(
+        monitorHandle, [this, &enumChoices, enumCount, dataSize, &allocationSucceeded](knobData *data) {
+            if(dataSize > data->edata.dataSize) {
+                void *newData = malloc((size_t) dataSize);
+                if(newData == Q_NULLPTR) {
+                    allocationSucceeded = false;
+                    return;
+                }
+                if(data->edata.dataSize > 0 && data->edata.dataB != (void*) Q_NULLPTR)
+                    free(data->edata.dataB);
+                data->edata.dataB = newData;
+                data->edata.dataSize = dataSize;
+            }
+            data->edata.precision = 0;
+            data->edata.units[0] = '\0';
+            char *ptr = static_cast<char*>(data->edata.dataB);
+            for(int ind = 0; ind < enumCount; ++ind) {
+                const string val = enumChoices[ind];
+                int len = (int) val.length();
+                memcpy(ptr, val.data(), (size_t) len);
+                ptr += len;
+                ptr[0] = '\033';
+                ptr++;
+            }
+            ptr--;
+            ptr[0] = '\0';
+            data->edata.initialize = true;
+            data->edata.enumCount = enumCount;
+            data->edata.fieldtype = DBF_ENUM;
+            data->edata.accessR = 1;
+            data->edata.accessW = 1;
+            fillNtMetadata(*data);
+        });
+    bool published = false;
+    if(updated && allocationSucceeded &&
+       mutexKnobData->GetMutexKnobDataIfCurrent(monitorHandle, &enumData))
+        published = mutexKnobData->SetMutexKnobDataReceivedIfCurrent(monitorHandle, &enumData);
 
-    mutexKnobData->SetMutexKnobDataReceived(&kData);
-
-    mutexKnobData->DataUnlock(&kData);
+    mutexKnobData->DataUnlock(&enumData);
+    if(!published) return;
     callbackType = createMonitor_t;
     callbackThread->queueRequest(shared_from_this());
     pvaChannelGet.reset();
