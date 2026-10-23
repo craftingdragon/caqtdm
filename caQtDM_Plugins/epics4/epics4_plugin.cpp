@@ -32,6 +32,8 @@
 #include "epics4_plugin.h"
 #include <epicsThread.h>
 #include <ctime>
+#include <condition_variable>
+#include <mutex>
 #include "caQtDM_Plugins_global.h"
 
 Q_LOGGING_CATEGORY(epics4Log, "caqtdm.plugins.epics.4")
@@ -151,6 +153,24 @@ class epicsShareClass PVAInterface :
         public std::enable_shared_from_this<PVAInterface>
 {
 private:
+    // Pins provider callbacks and queued callback work while display teardown
+    // drains them. Synchronous plugin operations (puts and metadata queries)
+    // are outside this per-callback gate.
+    class CallbackLease {
+        PVAInterface *owner;
+    public:
+        explicit CallbackLease(PVAInterface *interface)
+            : owner(interface && interface->beginCallback() ? interface : 0) {}
+        ~CallbackLease() { if(owner) owner->endCallback(); }
+        explicit operator bool() const { return owner != 0; }
+        CallbackLease(const CallbackLease &) = delete;
+        CallbackLease &operator=(const CallbackLease &) = delete;
+    };
+
+    bool beginCallback();
+    void endCallback();
+    bool callbackGateIsClosed();
+
     template <typename pureData> void fillData(pureData const &array, size_t size, knobData* kPtr);
     void fillNtMetadata();
 
@@ -203,6 +223,10 @@ private:
     PVAChannelPutRequesterPtr pvaChannelPutRequester;
     BitSetPtr putBitSet;
     PVAMonitorRequesterPtr pvaMonitorRequester;
+    std::mutex callbackGateMutex;
+    std::condition_variable callbackGateDrained;
+    bool callbackGateClosed;
+    size_t activeCallbacks;
 
 public:
     POINTER_DEFINITIONS(PVAInterface);
@@ -212,6 +236,7 @@ public:
                  Epics4RequesterPtr const & requester,
                  CallbackThreadPtr const & callbackThread);
     virtual ~PVAInterface();
+    void closeCallbackGateAndWait();
     void destroy();
     void clearMonitor();
     void stopMonitor();
@@ -653,7 +678,9 @@ PVAInterface::PVAInterface(
       hasDimField(false),
       callbackType(unknown_t),
       convert(getConvert()),
-      gotTimeStamp(false)
+      gotTimeStamp(false),
+      callbackGateClosed(false),
+      activeCallbacks(0)
 {
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "PVAInterface::PVAInterface()";
 }
@@ -680,6 +707,33 @@ PVAInterface::~PVAInterface()
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "PVAInterface::~PVAInterface()";
 }
 
+bool PVAInterface::beginCallback()
+{
+    std::lock_guard<std::mutex> lock(callbackGateMutex);
+    if(callbackGateClosed) return false;
+    ++activeCallbacks;
+    return true;
+}
+
+void PVAInterface::endCallback()
+{
+    std::lock_guard<std::mutex> lock(callbackGateMutex);
+    if(--activeCallbacks == 0) callbackGateDrained.notify_all();
+}
+
+bool PVAInterface::callbackGateIsClosed()
+{
+    std::lock_guard<std::mutex> lock(callbackGateMutex);
+    return callbackGateClosed;
+}
+
+void PVAInterface::closeCallbackGateAndWait()
+{
+    std::unique_lock<std::mutex> lock(callbackGateMutex);
+    callbackGateClosed = true;
+    callbackGateDrained.wait(lock, [this]() { return activeCallbacks == 0; });
+}
+
 void PVAInterface::clearMonitor()
 {
     Lock lock(mutex);
@@ -689,6 +743,7 @@ void PVAInterface::clearMonitor()
             monitorStarted = false;
         }
         monitor->destroy();
+        monitor.reset();
     }
 }
 
@@ -727,6 +782,8 @@ void PVAInterface::destroy()
 
 void PVAInterface::channelStateChange(bool isConnected)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     if(Epics4Plugin::getDebug()) {
         qCDebug(::epics4Log) << "PVAInterface::channelStateChange index" << index
              << "fullName" << QString::fromStdString(pvaChannel->getFullName())
@@ -747,6 +804,8 @@ string PVAInterface::getRequesterName()
 
 void PVAInterface::message(std::string const & message,MessageType messageType)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     requester->message(pvaChannel->getFullName() + " " + message,messageType);
 }
 
@@ -754,6 +813,8 @@ void PVAInterface::getDone(
         const Status& status,
         FieldConstPtr const & yyy)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     structure =  std::dynamic_pointer_cast<const Structure>(yyy);
     if(!status.isOK()) {
         string mess(status.getMessage());
@@ -799,6 +860,8 @@ void PVAInterface::channelGetConnect(
         ChannelGet::shared_pointer const & channelGet,
         Structure::const_shared_pointer const & structure)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(channelGet);
     Q_UNUSED(structure);
     if(!status.isOK()) {
@@ -816,6 +879,8 @@ void PVAInterface::getDone(
         PVStructurePtr const & pvStructure,
         BitSet::shared_pointer const & bitSet)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(channelGet);
     Q_UNUSED(bitSet);
     if(!status.isOK()) {
@@ -837,6 +902,8 @@ void PVAInterface::monitorConnect(
         Monitor::shared_pointer const & monitor,
         Structure::const_shared_pointer const & structure)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(structure);
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << " PVAInterface::monitorConnect";
     if(status.isOK()) {
@@ -854,6 +921,8 @@ void PVAInterface::monitorConnect(
 
 void PVAInterface::unlisten(MonitorPtr const & monitor)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(monitor);
     qCDebug(::epics4Log) << "PVAInterface::unlisten";
     unlistenCalled = true;
@@ -861,10 +930,17 @@ void PVAInterface::unlisten(MonitorPtr const & monitor)
 
 void PVAInterface::monitorEvent(MonitorPtr const & monitor)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "PVAInterface::monitorEvent";
     while(true) {
+        if(callbackGateIsClosed()) break;
         MonitorElementPtr monitorElement(monitor->poll());
         if(!monitorElement) break;
+        if(callbackGateIsClosed()) {
+            monitor->release(monitorElement);
+            break;
+        }
         PVStructurePtr pvStructure = monitorElement->pvStructurePtr;
         kData = mutexKnobData->GetMutexKnobData(index);
         if(kData.index == -1) {
@@ -925,6 +1001,8 @@ void PVAInterface::channelPutConnect(
         ChannelPut::shared_pointer const & channelPut,
         Structure::const_shared_pointer const & structure)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(channelPut);
     if(!status.isOK()) {
         requester->message(pvaChannel->getFullName() + " " + status.getMessage(),errorMessage);
@@ -941,6 +1019,8 @@ void PVAInterface::getDone(
         PVStructurePtr const & pvStructure,
         BitSet::shared_pointer const & bitSet)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(channelPut);
     Q_UNUSED(pvStructure);
     Q_UNUSED(bitSet);
@@ -954,6 +1034,8 @@ void PVAInterface::putDone(
         const Status& status,
         ChannelPut::shared_pointer const & channelPut)
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     Q_UNUSED(channelPut);
     if(!status.isOK()) {
         requester->message(pvaChannel->getFullName() + " " + status.getMessage(),errorMessage);
@@ -967,6 +1049,8 @@ void PVAInterface::putDone(
 
 void PVAInterface::callback()
 {
+    CallbackLease lease(this);
+    if(!lease) return;
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "PVAInterface::callback() index" << index << "callbacktype" << callbackType;
     try {
         switch(callbackType) {
@@ -1950,6 +2034,7 @@ int Epics4Plugin::pvClearMonitor(knobData *kData) {
         qCDebug(::epics4Log) << "Epics4Plugin::pvClearMonitor no interface for" << kData->pv;
         return false;
     }
+    pvaInterface->closeCallbackGateAndWait();
     pvaInterface->clearMonitor();
     return true;
 }
@@ -1960,6 +2045,8 @@ int Epics4Plugin::pvFreeAllocatedData(knobData *kData)
     PVAInterfaceGlue *pvaInterfaceGlue  = static_cast<PVAInterfaceGlue *>(kData->edata.info);
     PVAInterfacePtr pvaInterface = interfaceOf(kData->edata.info);
     if(pvaInterface) {
+        pvaInterface->closeCallbackGateAndWait();
+        pvaInterface->clearMonitor();
         PVAChannelPtr pvaChannel(pvaInterface->getPVAChannel());
         if(pvaChannel && pvaChannel->removeInterface(pvaInterface)) {
             string mapName = pvaChannel->getMapName();
