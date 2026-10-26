@@ -6,6 +6,10 @@ on:
     paths-ignore:
       - 'caQtDM_docs/**'
       - 'caQtDM_Tests/**'
+  pull_request:
+    paths-ignore:
+      - 'caQtDM_docs/**'
+      - 'caQtDM_Tests/**'
 
 jobs:
   build:
