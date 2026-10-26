@@ -1,0 +1,97 @@
+name: caQtDM FreeBSD Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'caQtDM_docs/**'
+      - 'caQtDM_Tests/**'
+
+jobs:
+  build:
+    runs-on: [self-hosted, freebsd]
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Prepare build environment
+        run: |
+          set -euo pipefail
+          for tool in qmake6 gmake python3.12 pkg git tar; do
+            command -v "$tool" >/dev/null || { echo "::error::Missing build tool: $tool"; exit 1; }
+          done
+
+          export EPICS_BASE=/usr/local/epics/base-7.0.10
+          EPICS_HOST_ARCH="$("$EPICS_BASE/startup/EpicsHostArch")"
+          EPICSLIB="$EPICS_BASE/lib/$EPICS_HOST_ARCH"
+          QWTLIB=/usr/local/lib/qt6
+          QWTINCLUDE=/usr/local/include/qt6/qwt6
+          PYTHONINCLUDE=/usr/local/include/python3.12
+          PYTHONLIB=/usr/local/lib
+          QWTVERSION="$(pkg query '%v' qwt6-qt6)"
+
+          for file in \
+            "$EPICS_BASE/include/epicsVersion.h" \
+            "$EPICSLIB/libca.so" \
+            "$QWTINCLUDE/qwt_global.h" \
+            "$QWTLIB/libqwt.so" \
+            "$PYTHONINCLUDE/Python.h" \
+            "$PYTHONLIB/libpython3.12.so"; do
+            test -f "$file" || { echo "::error::Missing build dependency: $file"; exit 1; }
+          done
+
+          CI_SOURCE="$(mktemp -d "${RUNNER_TEMP:-/tmp}/caqtdm-freebsd.XXXXXX")"
+          echo "CI_SOURCE=$CI_SOURCE" >> "$GITHUB_ENV"
+          git archive HEAD | tar -xf - -C "$CI_SOURCE"
+          mkdir -p "$CI_SOURCE/caQtDM_Binaries/designer" "$CI_SOURCE/caQtDM_Binaries/controlsystems"
+
+          {
+            echo "CAQTDM_COLLECT=$CI_SOURCE/caQtDM_Binaries"
+            echo "QTCONTROLS_LIBS=$CI_SOURCE/caQtDM_Binaries"
+            echo "QTBASE=$CI_SOURCE/caQtDM_Binaries"
+            echo "QTHOME=/usr/local"
+            echo "QWTHOME=/usr/local"
+            echo "QWTINCLUDE=$QWTINCLUDE"
+            echo "QWTLIB=$QWTLIB"
+            echo "QWTLIBNAME=qwt"
+            echo "QWTVERSION=$QWTVERSION"
+            echo "EPICS_BASE=$EPICS_BASE"
+            echo "EPICS_HOST_ARCH=$EPICS_HOST_ARCH"
+            echo "EPICSINCLUDE=$EPICS_BASE/include"
+            echo "EPICSLIB=$EPICSLIB"
+            echo "PYTHONVERSION=3.12"
+            echo "PYTHONINCLUDE=$PYTHONINCLUDE"
+            echo "PYTHONLIB=$PYTHONLIB"
+            echo "QTDM_RPATH=$EPICSLIB:$QWTLIB:$CI_SOURCE/caQtDM_Binaries"
+          } >> "$GITHUB_ENV"
+
+      - name: Build caQtDM and unit tests
+        run: |
+          set -euo pipefail
+          cd "$CI_SOURCE"
+          qmake6 all.pro CONFIG+=caqtdm_with_tests
+          gmake -j"$(sysctl -n hw.ncpu)"
+          test -x "$CAQTDM_COLLECT/caQtDM"
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          export HOME="$CI_SOURCE/test-home"
+          export XDG_DATA_HOME="$HOME/.local/share"
+          mkdir -p "$XDG_DATA_HOME"
+          export QT_QPA_PLATFORM=offscreen
+          export LD_LIBRARY_PATH="$EPICSLIB:$QWTLIB:$CAQTDM_COLLECT:$CAQTDM_COLLECT/controlsystems:${LD_LIBRARY_PATH:-}"
+          gmake -C "$CI_SOURCE/caQtDM_UnitTests" check
+
+      - name: Clean temporary build
+        if: always()
+        run: |
+          if [[ -n "${CI_SOURCE:-}" && "$CI_SOURCE" == "${RUNNER_TEMP:-/tmp}"/caqtdm-freebsd.* ]]; then
+            rm -rf "$CI_SOURCE"
+          fi
