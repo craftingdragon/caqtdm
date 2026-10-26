@@ -55,7 +55,7 @@
 #include "mutexKnobData.h"
 #include "caqtdm_lib.h"
 #include "loggingcategories.h"
-#include "ui_main.h"
+#include <ui_main.h>
 #include <stdio.h>
 #include <string.h>
 
