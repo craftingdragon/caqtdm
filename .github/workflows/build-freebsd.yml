@@ -45,6 +45,8 @@ jobs:
             "$EPICSLIB/libca.so" \
             "$QWTINCLUDE/qwt_global.h" \
             "$QWTLIB/libqwt.so" \
+            "$QWTLIB/mkspecs/modules/qt_lib_serialbus.pri" \
+            "$QWTLIB/mkspecs/modules/qt_lib_positioning.pri" \
             "$PYTHONINCLUDE/Python.h" \
             "$PYTHONLIB/libpython3.12.so"; do
             test -f "$file" || { echo "::error::Missing build dependency: $file"; exit 1; }
@@ -72,6 +74,8 @@ jobs:
             echo "PYTHONVERSION=3.12"
             echo "PYTHONINCLUDE=$PYTHONINCLUDE"
             echo "PYTHONLIB=$PYTHONLIB"
+            echo "CAQTDM_MODBUS=1"
+            echo "CAQTDM_GPS=1"
             echo "QTDM_RPATH=$EPICSLIB:$QWTLIB:$CI_SOURCE/caQtDM_Binaries"
           } >> "$GITHUB_ENV"
 
@@ -82,6 +86,8 @@ jobs:
           qmake6 all.pro CONFIG+=caqtdm_with_tests
           gmake -j"$(sysctl -n hw.ncpu)"
           test -x "$CAQTDM_COLLECT/caQtDM"
+          test -f "$CAQTDM_COLLECT/controlsystems/libmodbus_plugin.so"
+          test -f "$CAQTDM_COLLECT/controlsystems/libgps_plugin.so"
 
       - name: Run unit tests
         run: |
