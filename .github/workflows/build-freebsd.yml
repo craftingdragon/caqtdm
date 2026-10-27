@@ -76,7 +76,7 @@ jobs:
             echo "PYTHONLIB=$PYTHONLIB"
             echo "CAQTDM_MODBUS=1"
             echo "CAQTDM_GPS=1"
-            echo "QTDM_RPATH=$EPICSLIB:$QWTLIB:$CI_SOURCE/caQtDM_Binaries"
+            echo "QTDM_RPATH=$EPICSLIB:$QWTLIB:/usr/local/caqtdm"
           } >> "$GITHUB_ENV"
 
       - name: Build caQtDM and unit tests
@@ -98,6 +98,53 @@ jobs:
           export QT_QPA_PLATFORM=offscreen
           export LD_LIBRARY_PATH="$EPICSLIB:$QWTLIB:$CAQTDM_COLLECT:$CAQTDM_COLLECT/controlsystems:${LD_LIBRARY_PATH:-}"
           gmake -C "$CI_SOURCE/caQtDM_UnitTests" check
+
+      - name: Create FreeBSD package
+        run: |
+          set -euo pipefail
+          package_root="$CI_SOURCE/package-root"
+          package_files="$package_root/usr/local/caqtdm"
+          package_metadata="$CI_SOURCE/package-metadata"
+          package_version="$(sed -n 's/^CAQTDM_VERSION = V\([0-9.]*\)$/\1/p' "$CI_SOURCE/caQtDM_Viewer/qtdefs.pri").g${GITHUB_SHA:0:8}"
+          package_arch="$(pkg config ABI)"
+
+          mkdir -p "$package_files" "$package_root/usr/local/bin" "$package_metadata" "$CI_SOURCE/packages"
+          cp -R "$CAQTDM_COLLECT/." "$package_files/"
+          rm -f "$package_files/"*.a
+          printf '#!/bin/sh\nexec /usr/local/caqtdm/caQtDM "$@"\n' > "$package_root/usr/local/bin/caqtdm"
+          chmod 755 "$package_root/usr/local/bin/caqtdm"
+          ln -s caqtdm "$package_root/usr/local/bin/caQtDM"
+
+          cat > "$package_metadata/+MANIFEST" <<EOF
+          name: caqtdm
+          version: $package_version
+          origin: science/caqtdm
+          comment: Qt display manager for EPICS control systems
+          maintainer: helge.brands@psi.ch
+          www: https://caqtdm.github.io/
+          prefix: /usr/local
+          arch: $package_arch
+          desc: caQtDM with EPICS, Modbus and GPS plugins. Requires EPICS Base at /usr/local/epics/base-7.0.10.
+          EOF
+
+          printf 'deps: {\n' >> "$package_metadata/+MANIFEST"
+          for dependency in qt6-base qt6-5compat qt6-positioning qt6-serialbus qt6-svg qt6-tools qwt6-qt6 python312; do
+            read -r dependency_version dependency_origin < <(pkg query '%v %o' "$dependency")
+            printf '  "%s": {version: "%s", origin: "%s"},\n' "$dependency" "$dependency_version" "$dependency_origin" >> "$package_metadata/+MANIFEST"
+          done
+          printf '}\n' >> "$package_metadata/+MANIFEST"
+
+          find "$package_root/usr/local" \( -type f -o -type l \) -print | sed "s#^$package_root##" | sort > "$package_metadata/pkg-plist"
+          pkg create -r "$package_root" -m "$package_metadata" -p "$package_metadata/pkg-plist" -o "$CI_SOURCE/packages"
+          test -f "$CI_SOURCE/packages/caqtdm-$package_version.pkg"
+          pkg info -F "$CI_SOURCE/packages/caqtdm-$package_version.pkg"
+
+      - name: Upload FreeBSD package
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          path: ${{ env.CI_SOURCE }}/packages/*.pkg
+          if-no-files-found: error
+          archive: false
 
       - name: Clean temporary build
         if: always()
