@@ -5933,7 +5933,15 @@ void CaQtDM_Lib::closeEvent(QCloseEvent* ce)
         if(kPtr != (knobData *) Q_NULLPTR) {
             if(myWidget == (QWidget*) kPtr->thisW) {
                 ControlsInterface * plugininterface = getControlInterface(kPtr->pluginName);
-                if(plugininterface != (ControlsInterface *) 0) plugininterface->pvFreeAllocatedData(kPtr);
+                if(plugininterface != (ControlsInterface *) 0 && !plugininterface->pvFreeAllocatedData(kPtr)) {
+                    // A failed plugin drain must not be followed by freeing the
+                    // mutex that its callback may still be waiting to lock.
+                    qCWarning(caQtDMLibLog) << "monitor resources remain active after clear failure"
+                                              << kPtr->pluginName << i;
+                    kPtr->thisW = (void*) Q_NULLPTR;
+                    kPtr->dispW = (void*) Q_NULLPTR;
+                    continue;
+                }
                 kPtr->thisW = (void*) Q_NULLPTR;
                 if(kPtr->mutex != (QMutex *) Q_NULLPTR) {
                     QMutex *mutex = (QMutex *) kPtr->mutex;

@@ -1035,6 +1035,15 @@ extern "C" int C_GetMutexKnobDataIfCurrent(
     return p->GetMutexKnobDataIfCurrent(
         MutexKnobData::MonitorHandle(index, generation), data);
 }
+extern "C" int C_UpdateMutexKnobDataIfCurrent(
+    MutexKnobData* p, int index, uint64_t generation,
+    C_KnobDataMutation mutation, void *context)
+{
+    if(p == Q_NULLPTR || generation == 0 || mutation == Q_NULLPTR) return false;
+    return p->UpdateMutexKnobDataIfCurrent(
+        MutexKnobData::MonitorHandle(index, generation),
+        [mutation, context](knobData *record) { mutation(record, context); });
+}
 extern "C" int C_SetMutexKnobDataReceivedIfCurrent(
     MutexKnobData* p, int index, uint64_t generation, knobData *kData)
 {

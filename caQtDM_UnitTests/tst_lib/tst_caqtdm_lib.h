@@ -66,6 +66,7 @@ private slots:
     void checkedReceivedCWrapperRejectsStaleGeneration();
     void checkedStoreCWrapperRejectsStaleGeneration();
     void checkedMutationRejectsStaleDataBufferUpdate();
+    void checkedCMutationRejectsStaleBufferAndPublish();
     void monitorRecordAddressSurvivesStoreGrowth();
 
 private:

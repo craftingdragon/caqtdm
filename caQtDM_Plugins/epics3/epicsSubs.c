@@ -259,6 +259,56 @@ static void access_rights_handler(struct access_rights_handler_args args)
     return;
 }
 
+typedef struct {
+    epicsData data;
+    void *payload;
+    int payloadSize;
+    int replacePayload;
+} decodedMonitorUpdate;
+
+// Called under MutexKnobData's store lock. The decoded payload belongs to the
+// callback until this mutation accepts the original monitor generation.
+static void applyDecodedMonitorUpdate(knobData *record, void *context)
+{
+    decodedMonitorUpdate *update = (decodedMonitorUpdate *) context;
+    void *oldPayload = record->edata.dataB;
+    int oldSize = record->edata.dataSize;
+    record->edata = update->data;
+    if (update->replacePayload) {
+        if (oldPayload && oldSize == update->payloadSize) {
+            memcpy(oldPayload, update->payload, (size_t) oldSize);
+            record->edata.dataB = oldPayload;
+            free(update->payload);
+        } else {
+            record->edata.dataB = update->payload;
+            free(oldPayload);
+        }
+        record->edata.dataSize = update->payloadSize;
+        update->payload = NULL;
+    } else {
+        record->edata.dataB = oldPayload;
+        record->edata.dataSize = oldSize;
+    }
+}
+
+static int storeDecodedMonitorUpdateLocked(connectInfo *info,
+                                           decodedMonitorUpdate *update, int publish)
+{
+    knobData current;
+    int stored;
+    stored = C_UpdateMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                             info->generation,
+                                             applyDecodedMonitorUpdate, update);
+    if (stored && publish &&
+        C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                    info->generation, &current))
+        C_SetMutexKnobDataReceivedIfCurrent(mutexKnobdataPtr, info->index,
+                                             info->generation, &current);
+    free(update->payload);
+    update->payload = NULL;
+    return stored;
+}
+
 /**
  * initiate data acquisition
  */
@@ -266,21 +316,29 @@ static void access_rights_handler(struct access_rights_handler_args args)
 static void dataCallback(struct event_handler_args args)
 {
     knobData kData;
+    knobData lockData = {0};
+    decodedMonitorUpdate update = {0};
+    int handled = true;
 
     connectInfo *info = (connectInfo *) ca_puser(args.chid);
     if(info == (connectInfo *) 0) return;
 
-    C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
-    if(kData.index == -1) return;
+    if(!C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                    info->generation, &kData)) return;
 
     if (args.status != ECA_NORMAL) {
         PRINT(printf("dataCallback:  get: %s for %s\n", ca_name(args.chid), ca_message_text[CA_EXTRACT_MSG_NO(args.status)]));
     } else {
+        lockData.mutex = kData.mutex;
+        C_DataLock(mutexKnobdataPtr, &lockData);
+        if(!C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                        info->generation, &kData)) {
+            C_DataUnlock(mutexKnobdataPtr, &lockData);
+            return;
+        }
         kData.edata.monitorCount = info->event;
         kData.edata.connected = info->connected;
         kData.edata.fieldtype = ca_field_type(args.chid);
-
-        C_DataLock(mutexKnobdataPtr, &kData);
 
         switch (ca_field_type(args.chid)) {
 
@@ -296,19 +354,16 @@ static void dataCallback(struct event_handler_args args)
                          stsF->status, (int) args.count, dbr_size_n(args.type, args.count)));
 
             dataSize = dbr_size_n(args.type, args.count) + sizeof(char);
-            if(dataSize != kData.edata.dataSize) {
-               if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                kData.edata.dataB = (void*) malloc((size_t) dataSize);
-                kData.edata.dataSize = dataSize;
-            }
-
-            ptr = (char*) kData.edata.dataB;
+            update.payload = malloc((size_t) dataSize);
+            if (!update.payload) goto data_done;
+            update.payloadSize = dataSize;
+            update.replacePayload = true;
+            ptr = (char*) update.payload;
             memcpy(ptr, val_ptr, args.count *sizeof(char));
             ptr[args.count] = '\0';
 
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -328,16 +383,14 @@ static void dataCallback(struct event_handler_args args)
             dataSize = dbr_size_n(args.type, args.count) + (args.count+1) * sizeof(char);
             // the reason for this here are crashes mainly on reloads of the panels
             if (dataSize < db_strval_dim) dataSize=db_strval_dim;
-            if(dataSize != kData.edata.dataSize) {
-                if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                kData.edata.dataB = (void*) malloc((size_t) dataSize);
-                kData.edata.dataSize = dataSize;
-            }
-
-            ptr = (char*) kData.edata.dataB;
+            update.payload = malloc((size_t) dataSize);
+            if (!update.payload) goto data_done;
+            update.payloadSize = dataSize;
+            update.replacePayload = true;
+            ptr = (char*) update.payload;
             ptr[0] = '\0';
             len = 0;
-            strncpy(ptr, myLimitedString(val_ptr[0]),kData.edata.dataSize);
+            strncpy(ptr, myLimitedString(val_ptr[0]), update.payloadSize);
             for (i = 1; i < args.count; i++) {
                 len = len+ (int) strlen(myLimitedString(val_ptr[i-1]));
                 strcat(&ptr[len++], "\033");
@@ -346,7 +399,6 @@ static void dataCallback(struct event_handler_args args)
 
             AssignEpicsValue((double) 0, (long) stsF->value, args.count);
 
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -360,7 +412,6 @@ static void dataCallback(struct event_handler_args args)
 
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -375,15 +426,12 @@ static void dataCallback(struct event_handler_args args)
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
             if(args.count > 1) {
-                if((int) (args.count * sizeof(int16_t)) != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc(args.count * sizeof(int16_t));
-                    kData.edata.dataSize = args.count * (int) sizeof(int16_t);
-                }
-                memcpy(kData.edata.dataB, &stsF->value, args.count * sizeof(int16_t));
+                update.payloadSize = args.count * (int) sizeof(int16_t);
+                update.payload = malloc((size_t) update.payloadSize);
+                if (!update.payload) goto data_done;
+                update.replacePayload = true;
+                memcpy(update.payload, &stsF->value, (size_t) update.payloadSize);
             }
-
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -398,15 +446,12 @@ static void dataCallback(struct event_handler_args args)
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
             if(args.count > 1) {
-                if((int) (args.count * sizeof(int32_t)) != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc(args.count * sizeof(int32_t));
-                    kData.edata.dataSize = args.count * (int) sizeof(int32_t);
-                }
-                memcpy(kData.edata.dataB, &stsF->value, args.count * sizeof(int32_t));
+                update.payloadSize = args.count * (int) sizeof(int32_t);
+                update.payload = malloc((size_t) update.payloadSize);
+                if (!update.payload) goto data_done;
+                update.replacePayload = true;
+                memcpy(update.payload, &stsF->value, (size_t) update.payloadSize);
             }
-
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -421,14 +466,12 @@ static void dataCallback(struct event_handler_args args)
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
             if(args.count > 1) {
-                if((int) (args.count * sizeof(float)) != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc(args.count * sizeof(float));
-                    kData.edata.dataSize = args.count * (int) sizeof(float);
-                }
-                memcpy(kData.edata.dataB, &stsF->value, args.count * sizeof(float));
+                update.payloadSize = args.count * (int) sizeof(float);
+                update.payload = malloc((size_t) update.payloadSize);
+                if (!update.payload) goto data_done;
+                update.replacePayload = true;
+                memcpy(update.payload, &stsF->value, (size_t) update.payloadSize);
             }
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
         break;
 
@@ -443,49 +486,64 @@ static void dataCallback(struct event_handler_args args)
             AssignEpicsValue((double) stsF->value, (long) stsF->value, args.count);
 
             if(args.count > 1) {
-                if((int) (args.count * sizeof(double)) != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc(args.count * sizeof(double));
-                    memcpy(kData.edata.dataB, &stsF->value, args.count * sizeof(double));
-                    kData.edata.dataSize = args.count * (int) sizeof(double);
-                }
-                memcpy(kData.edata.dataB, &stsF->value, args.count * sizeof(double));
+                update.payloadSize = args.count * (int) sizeof(double);
+                update.payload = malloc((size_t) update.payloadSize);
+                if (!update.payload) goto data_done;
+                update.replacePayload = true;
+                memcpy(update.payload, &stsF->value, (size_t) update.payloadSize);
             }
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
 
         }
         break;
 
             default:
                 C_postMsgEvent(messageWindowPtr, 2, vaPrintf("unhandled epics type (%d) in datacallback\n", ca_field_type(args.chid)));
+                handled = false;
 
         } // end switch
 
-        C_DataUnlock(mutexKnobdataPtr, &kData);
-        info->event++;
+        if (handled) {
+            update.data = kData.edata;
+            update.data.monitorCount = info->event;
+            update.data.connected = info->connected;
+            if (storeDecodedMonitorUpdateLocked(info, &update, true))
+                info->event++;
+        } else {
+            info->event++;
+        }
+data_done:
+        free(update.payload);
+        C_DataUnlock(mutexKnobdataPtr, &lockData);
     }
 }
 
 static void displayCallback(struct event_handler_args args) {
     knobData kData;
+    knobData lockData = {0};
+    decodedMonitorUpdate update = {0};
     int status;
 
     connectInfo *info = (connectInfo *) ca_puser(args.chid);
     if(info == (connectInfo *) 0) return;
 
-    C_GetMutexKnobData(mutexKnobdataPtr, info->index, &kData);
-    if(kData.index == -1) return;
+    if(!C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                    info->generation, &kData)) return;
 
     if (args.status != ECA_NORMAL) {
         PRINT(printf("displayCallback:\n""  get: %s for %s\n", ca_name(args.chid), ca_message_text[CA_EXTRACT_MSG_NO(args.status)]));
     } else {
+        lockData.mutex = kData.mutex;
+        C_DataLock(mutexKnobdataPtr, &lockData);
+        if(!C_GetMutexKnobDataIfCurrent(mutexKnobdataPtr, info->index,
+                                        info->generation, &kData)) {
+            C_DataUnlock(mutexKnobdataPtr, &lockData);
+            return;
+        }
         kData.edata.initialize = true;
         kData.edata.monitorCount = kData.edata.displayCount = info->event;
         kData.edata.connected = info->connected;
         kData.edata.fieldtype = ca_field_type(args.chid);
         kData.edata.nelm = ca_element_count(args.chid);
-
-        C_DataLock(mutexKnobdataPtr, &kData);
 
         switch (ca_field_type(args.chid)) {
 
@@ -535,13 +593,11 @@ static void displayCallback(struct event_handler_args args) {
             if(stsF->no_str>0) {
                 // concatenate strings separated with ';'
                 dataSize = dbr_size_n(args.type, args.count) + stsF->no_str * sizeof(char);
-                if(dataSize != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc((size_t) dataSize);
-                    kData.edata.dataSize = dataSize;
-                }
-
-                ptr = (char*) kData.edata.dataB;
+                update.payload = malloc((size_t) dataSize);
+                if (!update.payload) goto display_done;
+                update.payloadSize = dataSize;
+                update.replacePayload = true;
+                ptr = (char*) update.payload;
                 ptr[0] = '\0';
                 len = 0;
                 strcpy(ptr, myLimitedString(stsF->strs[0]));
@@ -555,12 +611,11 @@ static void displayCallback(struct event_handler_args args) {
             } else if(args.count == 1) {  // no strings, must be a value, convert it to text
                 // concatenate strings separated with ';'
                 dataSize = 40;
-                if(dataSize != kData.edata.dataSize) {
-                    if(kData.edata.dataB != (void*) Q_NULLPTR) free(kData.edata.dataB);
-                    kData.edata.dataB = (void*) malloc((size_t) dataSize);
-                    kData.edata.dataSize = dataSize;
-                }
-                ptr = (char*) kData.edata.dataB;
+                update.payload = malloc((size_t) dataSize);
+                if (!update.payload) goto display_done;
+                update.payloadSize = dataSize;
+                update.replacePayload = true;
+                ptr = (char*) update.payload;
                 ptr[0] = '\0';
                 sprintf(ptr, "%d", stsF->value);
             }
@@ -631,6 +686,25 @@ static void displayCallback(struct event_handler_args args) {
         // when specifying zero as number of requested elements, we will get variable length arrays (zero lenght is then also considered)
         // probably will not work with older channel access gateways
 
+        update.data = kData.edata;
+        update.data.monitorCount = update.data.displayCount = info->event;
+        update.data.connected = info->connected;
+#if EPICS_REVISION >= 15
+        if (info->evAdded) {
+            update.data.displayCount = info->event - 2;
+            update.data.monitorCount = info->event - 1;
+        }
+#endif
+        if (!storeDecodedMonitorUpdateLocked(info, &update,
+#if EPICS_REVISION < 15
+                                             false
+#else
+                                             info->evAdded
+#endif
+                                             )) {
+            goto display_done;
+        }
+
 #if EPICS_REVISION < 15
         status = ca_add_array_event(dbf_type_to_DBR_STS(ca_field_type(args.chid)), 0, //ca_element_count(args.chid),
                                            args.chid, dataCallback, info, 0.0,0.0,0.0, &info->evID);
@@ -639,7 +713,6 @@ static void displayCallback(struct event_handler_args args) {
         if (status != ECA_NORMAL) {
             PRINT(printf("ca_add_array_event:\n"" %s\n", ca_message_text[CA_EXTRACT_MSG_NO(status)]));
         }
-        C_SetMutexKnobData(mutexKnobdataPtr, kData.index, kData);
         info->event++;
 #else
         if(!info->evAdded) {
@@ -650,16 +723,12 @@ static void displayCallback(struct event_handler_args args) {
             if (status != ECA_NORMAL) {
                 PRINT(printf("ca_add_array_event:\n"" %s\n", ca_message_text[CA_EXTRACT_MSG_NO(status)]));
             }
-            C_SetMutexKnobData(mutexKnobdataPtr, kData.index, kData);
             info->event++;
-        } else {
-            printf("display info event nr=%d\n", info->event);
-            kData.edata.displayCount = info->event-2;
-            kData.edata.monitorCount = info->event-1;
-            C_SetMutexKnobDataReceived(mutexKnobdataPtr, &kData);
         }
 #endif
-        C_DataUnlock(mutexKnobdataPtr, &kData);
+display_done:
+        free(update.payload);
+        C_DataUnlock(mutexKnobdataPtr, &lockData);
     }
 }
 
@@ -961,62 +1030,37 @@ void EpicsDisconnect(knobData *kData)
 /**
  * unhook the device that has been hooked here on the gui
  */
-void ClearMonitor(knobData *kData)
+int ClearMonitor(knobData *kData)
 {
-    int status, aux;
+    int status;
     connectInfo *info;
 
-    if (kData->index == -1) return;
-
-    PrepareDeviceIO();
-
-    PRINT(printf("ClearMonitor -- clear channel %s index=%d\n", kData->pv, kData->index));
-
-    aux =  kData->index;
-    kData->index = -1;
-    kData->pv[0] = '\0';
-
+    if (kData == NULL) return false;
     info = (connectInfo *) kData->edata.info;
-    if (info != (connectInfo *) 0) {
-        if (info->connected){
-            if(info->ch != (chid) 0) {
-                if(info->evAdded) {
-                    info->evAdded = false;
-                    PRINT(printf("ca_clear_event: %s index=%d\n", info->pv, aux));
-                    if (ca_state(info->ch) == cs_conn) {
-                        status = ca_clear_event(info->evID);
-                        if (status != ECA_NORMAL) {
-                            PRINT(printf("ca_clear_event:\n"" %s\n", ca_message_text[CA_EXTRACT_MSG_NO(status)]));
-                        }
-                    }
-                }
-                status = ca_clear_channel(info->ch);
-                PRINT(printf("ca_clear_channel: %s chid=%d, index=%d\n", info->pv, info->ch, aux));
-                info->connected = false;
-                info->event = 0;
-                //info->ch = 0;
-                if(status != ECA_NORMAL) {
-                    printf("ca_clear_channel: %s %s index=%d\n", ca_message_text[CA_EXTRACT_MSG_NO(status)], info->pv, aux);
-                }
-                info->pv[0] = '\0';
-            }
-        } else {
-            PRINT(printf("ClearMonitor -- %s is not connected index=%d %d\n", info->pv, info->index, info->evID));
-            info->connected=false;
-            C_SetMutexKnobDataConnectedIfCurrent(mutexKnobdataPtr, info->index, info->generation, info->connected);
-            info->evAdded = false;
-            info->evID = 0;
-            info->event = 0;
-            if(info->ch != (chid) 0) {
-                ca_clear_channel(info->ch);
-            }
-            info->ch = 0;
-            PRINT(printf("ClearMonitor -- %s should now have been taken out \n", info->pv));
-            info->pv[0] = '\0';
+    if (info == NULL) return true;
+
+    if (info->ch != (chid) 0) {
+        PrepareDeviceIO();
+        PRINT(printf("ClearMonitor -- clear channel %s index=%d\n", info->pv, info->index));
+
+        // Channel Access waits for every callback on this channel before
+        // ca_clear_channel returns. It also clears all of its subscriptions.
+        // Never hold the record mutex while calling it: callbacks use that lock.
+        status = ca_clear_channel(info->ch);
+        if (status != ECA_NORMAL) {
+            printf("ca_clear_channel: %s %s index=%d\n",
+                   ca_message_text[CA_EXTRACT_MSG_NO(status)], info->pv, info->index);
+            return false;
         }
+        info->ch = 0;
     }
 
-    status = ca_pend_io(CA_TIMEOUT);
+    info->connected = false;
+    info->evAdded = false;
+    info->evID = 0;
+    info->event = 0;
+    info->pv[0] = '\0';
+    return true;
 }
 
 void DestroyContext()

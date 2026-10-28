@@ -35,6 +35,24 @@
 #include <QSignalSpy>
 #include <cfloat>
 #include <climits>
+#include <cstdlib>
+#include <cstring>
+
+struct CBufferMutation {
+    char *replacement;
+    bool invoked;
+};
+
+extern "C" void replaceCBuffer(knobData *record, void *context)
+{
+    CBufferMutation *mutation = static_cast<CBufferMutation *>(context);
+    mutation->invoked = true;
+    std::free(record->edata.dataB);
+    record->edata.dataB = mutation->replacement;
+    record->edata.dataSize = 8;
+    record->edata.monitorCount = 1;
+    mutation->replacement = nullptr;
+}
 
 // registers a genSoftPV-defined internal channel and pumps one publish cycle
 static genSoftPV *registerInternalGenSoftPV(CaQtDM_Lib *lib, InternalPlugin *plugin, QWidget *host,
@@ -1061,6 +1079,73 @@ void TestCaQtDM_Lib::checkedMutationRejectsStaleDataBufferUpdate()
     currentSnapshot.edata.dataSize = 0;
     QVERIFY(m_mutexKnobData->SetMutexKnobDataIfCurrent(currentHandle, currentSnapshot));
     free(currentBuffer);
+}
+
+void TestCaQtDM_Lib::checkedCMutationRejectsStaleBufferAndPublish()
+{
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateDirect);
+    const int index = m_mutexKnobData->GetMutexKnobDataIndex();
+    knobData oldRecord = {};
+    oldRecord.index = index;
+    const uint64_t oldGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, index, oldRecord);
+    QVERIFY(oldGeneration != 0);
+
+    oldRecord.index = -1;
+    m_mutexKnobData->SetMutexKnobData(index, oldRecord);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), index);
+
+    char *currentBuffer = static_cast<char *>(std::malloc(8));
+    QVERIFY(currentBuffer != nullptr);
+    std::memcpy(currentBuffer, "current", 8);
+    knobData currentRecord = {};
+    currentRecord.index = index;
+    currentRecord.edata.fieldtype = caSTRING;
+    currentRecord.edata.dataB = currentBuffer;
+    currentRecord.edata.dataSize = 8;
+    const uint64_t currentGeneration =
+        C_SetMutexKnobDataAndGetGeneration(m_mutexKnobData, index, currentRecord);
+    QVERIFY(currentGeneration != 0);
+    QVERIFY(currentGeneration != oldGeneration);
+
+    char *replacement = static_cast<char *>(std::malloc(8));
+    QVERIFY(replacement != nullptr);
+    std::memcpy(replacement, "updated", 8);
+    CBufferMutation mutation = {replacement, false};
+    QSignalSpy updates(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget);
+    QVERIFY(updates.isValid());
+
+    QVERIFY(!C_UpdateMutexKnobDataIfCurrent(
+        m_mutexKnobData, index, oldGeneration, replaceCBuffer, &mutation));
+    QVERIFY(!mutation.invoked);
+    knobData stale = currentRecord;
+    stale.edata.monitorCount = 1;
+    QVERIFY(!C_SetMutexKnobDataReceivedIfCurrent(
+        m_mutexKnobData, index, oldGeneration, &stale));
+    QCOMPARE(updates.count(), 0);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(index).edata.dataB,
+             static_cast<void *>(currentBuffer));
+    QCOMPARE(QString::fromLatin1(currentBuffer), QStringLiteral("current"));
+
+    QVERIFY(C_UpdateMutexKnobDataIfCurrent(
+        m_mutexKnobData, index, currentGeneration, replaceCBuffer, &mutation));
+    QVERIFY(mutation.invoked);
+    QCOMPARE(mutation.replacement, nullptr);
+    knobData current;
+    QVERIFY(C_GetMutexKnobDataIfCurrent(
+        m_mutexKnobData, index, currentGeneration, &current));
+    QCOMPARE(current.edata.dataB, static_cast<void *>(replacement));
+    QCOMPARE(QString::fromLatin1(static_cast<const char *>(current.edata.dataB)),
+             QStringLiteral("updated"));
+    QVERIFY(C_SetMutexKnobDataReceivedIfCurrent(
+        m_mutexKnobData, index, currentGeneration, &current));
+    QCOMPARE(updates.count(), 1);
+
+    current.edata.dataB = nullptr;
+    current.edata.dataSize = 0;
+    QVERIFY(C_SetMutexKnobDataIfCurrent(
+        m_mutexKnobData, index, currentGeneration, &current));
+    std::free(replacement);
 }
 
 void TestCaQtDM_Lib::monitorRecordAddressSurvivesStoreGrowth()

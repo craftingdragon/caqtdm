@@ -44,6 +44,11 @@ extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataIfCurrent(
     MutexKnobData* p, int indx, uint64_t generation, const knobData *data);
 extern CAQTDM_LIBSHARED_EXPORT int C_GetMutexKnobDataIfCurrent(
     MutexKnobData* p, int indx, uint64_t generation, knobData *data);
+typedef void (*C_KnobDataMutation)(knobData *record, void *context);
+// The mutation runs under the store lock and must not call this store again.
+extern CAQTDM_LIBSHARED_EXPORT int C_UpdateMutexKnobDataIfCurrent(
+    MutexKnobData* p, int indx, uint64_t generation,
+    C_KnobDataMutation mutation, void *context);
 extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataReceivedIfCurrent(
     MutexKnobData* p, int indx, uint64_t generation, knobData *kData);
 extern CAQTDM_LIBSHARED_EXPORT int C_SetMutexKnobDataConnectedIfCurrent(

@@ -88,13 +88,14 @@ int Epics3Plugin::pvAddMonitor(int index, knobData *kData, int rate, int skip) {
 int Epics3Plugin::pvClearMonitor(knobData *kData) {
     qCDebug(epics3Log) << "Epics3Plugin:pvClearMonitor" << kData->pv;
     Channelcache.remove(kData->pv,kData->index);
-    ClearMonitor(kData);
-    return true;
+    return ClearMonitor(kData);
 }
 
 int Epics3Plugin::pvFreeAllocatedData(knobData *kData)
 {
     qCDebug(epics3Log) << "Epics3Plugin:pvFreeAllocatedData";
+    // Also drain the channel if the caller skipped or failed to clear it.
+    if (!ClearMonitor(kData)) return false;
     QMutexLocker locker((QMutex *)kData->mutex);
     if (kData->edata.info != (void *) Q_NULLPTR) {
         free(kData->edata.info);

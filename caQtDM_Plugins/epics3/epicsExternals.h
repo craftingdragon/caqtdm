@@ -55,7 +55,8 @@ void PrepareDeviceIO();
 void TerminateDeviceIO();
 void InitializeContextMutex();
 int  CreateAndConnect(int index, knobData *kData, int rate, int skip);
-void ClearMonitor(knobData *kData);
+/* Returns true only after Channel Access has drained the channel callbacks. */
+int ClearMonitor(knobData *kData);
 
 #ifdef __cplusplus
 }
