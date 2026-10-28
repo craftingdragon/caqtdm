@@ -194,16 +194,16 @@ private:
     MessageWindow *m_messageWindowP;
     PasswordCredentials m_generalPasswordCredentials;
     QString m_pemPassword;
-    // knobData index for pem password
-    int m_pemPasswordIndex;
+    // Registration handles for synthetic credential channels.
+    MutexKnobData::MonitorHandle m_pemPasswordIndex;
     // knobData index for the general username for all channels
-    int m_usernameIndex;
+    MutexKnobData::MonitorHandle m_usernameIndex;
     // knobData index for the general password for all channels
-    int m_passwordIndex;
+    MutexKnobData::MonitorHandle m_passwordIndex;
     // Maps host to knobData index of respective username
-    QMap<QString, int> m_usernameIndexForHost;
+    QMap<QString, MutexKnobData::MonitorHandle> m_usernameIndexForHost;
     // Maps host to knobData index of respective password
-    QMap<QString, int> m_passwordIndexForHost;
+    QMap<QString, MutexKnobData::MonitorHandle> m_passwordIndexForHost;
     // Maps host to respective PasswordCredentials
     QMap<QString, PasswordCredentials> m_passwordCredentialsForHost;
     // Maps URI (endpoint + "/" + nodeId) to knobData index
@@ -227,6 +227,8 @@ private:
      * @param value: value to copy
      */
     void copyStringToDataB(knobData &kData, const QString &value) const;
+    bool publishCredentialsPV(MutexKnobData::MonitorHandle handle,
+                              const QString &value, bool initialize);
 
     /**
      * @brief Checks if a pv is for a general username or password for all hosts

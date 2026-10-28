@@ -48,9 +48,6 @@ OPCUAPlugin::OPCUAPlugin()
     //QLoggingCategory::setFilterRules("qt.opcua.plugins.open62541*=false");
     m_mutexKnobDataP = Q_NULLPTR;
     m_messageWindowP = Q_NULLPTR;
-    m_usernameIndex = -1;
-    m_passwordIndex = -1;
-    m_pemPasswordIndex = -1;
     m_pemPassword = "";
 }
 
@@ -167,6 +164,49 @@ void OPCUAPlugin::copyStringToDataB(knobData &kData, const QString &newValue) co
     memcpy(kData.edata.dataB, newValueBytes.constData(), static_cast<size_t>(kData.edata.dataSize));
 }
 
+bool OPCUAPlugin::publishCredentialsPV(MutexKnobData::MonitorHandle handle,
+                                        const QString &value, bool initialize)
+{
+    QByteArray bytes = value.toUtf8();
+    void *replacement = Q_NULLPTR;
+    if (!value.isEmpty() || !initialize) {
+        replacement = malloc(static_cast<size_t>(bytes.size() + 1));
+        if (!replacement) return false;
+        memcpy(replacement, bytes.constData(), static_cast<size_t>(bytes.size() + 1));
+    }
+
+    knobData lockData;
+    if (!m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &lockData)) {
+        free(replacement);
+        return false;
+    }
+    m_mutexKnobDataP->DataLock(&lockData);
+    bool updated = m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [&](knobData *stored) {
+        if (initialize && !stored->edata.connected) {
+            stored->edata.connected = true;
+            stored->edata.valueCount = stored->edata.nelm = 0;
+            stored->edata.dataSize = 0;
+            stored->edata.fieldtype = caSTRING;
+            stored->edata.accessR = true;
+            stored->edata.accessW = true;
+        }
+        if (replacement) {
+            free(stored->edata.dataB);
+            stored->edata.dataB = replacement;
+            stored->edata.dataSize = bytes.size() + 1;
+            replacement = Q_NULLPTR;
+        }
+        if (!initialize) stored->edata.valueCount = stored->edata.nelm = 1;
+        stored->edata.monitorCount++;
+    });
+    knobData published;
+    bool delivered = updated && m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &published)
+                     && m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &published);
+    m_mutexKnobDataP->DataUnlock(&lockData);
+    free(replacement);
+    return delivered;
+}
+
 bool OPCUAPlugin::isGeneralUsernamePassword(const QString &pv) const
 {
     return (pv == "username" || pv == "password");
@@ -192,25 +232,16 @@ bool OPCUAPlugin::isPemPassword(const QString &pv) const
 
 int OPCUAPlugin::initializeCredentialsPV(int index)
 {
-    knobData kData = m_mutexKnobDataP->GetMutexKnobData(index);
+    auto handle = m_mutexKnobDataP->GetMutexKnobDataHandle(index);
+    knobData kData;
+    if (!m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData)) return false;
     QString pv = QString::fromUtf8(kData.pv);
-    if (!kData.edata.connected) {
-        kData.edata.connected = true;
-        kData.edata.valueCount = kData.edata.nelm = 0;
-        kData.edata.dataSize = 0;
-        kData.edata.fieldtype = caSTRING;
-        kData.edata.accessR = true;
-        kData.edata.accessW = true;
-    }
-    kData.edata.monitorCount++;
     QString newValue;
 
     if (isGeneralUsernamePassword(pv)) {
         if (pv == "username") {
-            m_usernameIndex = index;
             newValue = m_generalPasswordCredentials.username;
         } else if (pv == "password") {
-            m_passwordIndex = index;
             if (!m_generalPasswordCredentials.password.isEmpty()) {
                 newValue = PASSWORD_PLACEHOLDER;
             }
@@ -220,32 +251,30 @@ int OPCUAPlugin::initializeCredentialsPV(int index)
         host.remove(pv.length() - 9, 9);
         host.remove(PLUGIN_PREFIX);
         if (pv.endsWith("username")) {
-            m_usernameIndexForHost[host] = index;
             if (m_passwordCredentialsForHost.contains(host)) {
                 newValue = m_passwordCredentialsForHost[host].username;
-            } else {
-                m_passwordCredentialsForHost[host] = {"", ""};
             }
         } else if (pv.endsWith("password")) {
-            m_passwordIndexForHost[host] = index;
             if (m_passwordCredentialsForHost.contains(host)
                 && !m_passwordCredentialsForHost[host].password.isEmpty()) {
                 newValue = PASSWORD_PLACEHOLDER;
-            } else {
-                m_passwordCredentialsForHost[host] = {"", ""};
             }
         }
     } else if (isPemPassword(pv)) {
-        m_pemPasswordIndex = index;
         if (!m_pemPassword.isEmpty()) {
             newValue = PASSWORD_PLACEHOLDER;
         }
     }
 
-    if (!newValue.isEmpty()) {
-        copyStringToDataB(kData, newValue);
-    }
-    m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
+    if (!publishCredentialsPV(handle, newValue, true)) return false;
+    if (pv == "username") m_usernameIndex = handle;
+    else if (pv == "password") m_passwordIndex = handle;
+    else if (isSpecificUsernamePassword(pv)) {
+        QString host = getHostFromSpecificUsernamePassword(pv);
+        if (!m_passwordCredentialsForHost.contains(host)) m_passwordCredentialsForHost[host] = {"", ""};
+        if (pv.endsWith("username")) m_usernameIndexForHost[host] = handle;
+        else m_passwordIndexForHost[host] = handle;
+    } else if (isPemPassword(pv)) m_pemPasswordIndex = handle;
 
     return true;
 }
@@ -440,6 +469,12 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
 int OPCUAPlugin::pvClearMonitor(knobData *kData)
 {
     QMutexLocker lock(&m_mutex);
+    auto matchesRegistration = [&](MutexKnobData::MonitorHandle handle) {
+        knobData current;
+        return m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &current)
+               && current.index == kData->index && current.mutex == kData->mutex
+               && qstrcmp(current.pv, kData->pv) == 0;
+    };
 
     QString rawPV = QString::fromUtf8(kData->pv);
     if (rawPV.endsWith(".FTVL")) {
@@ -459,21 +494,21 @@ int OPCUAPlugin::pvClearMonitor(knobData *kData)
         m_epicsWaveformAttributePVs[regularPV].NELM_index = -1;
         return true;
     } else if (rawPV == "username") {
-        m_usernameIndex = -1;
+        if (matchesRegistration(m_usernameIndex)) m_usernameIndex = {};
         return true;
     } else if (rawPV == "password") {
-        m_passwordIndex = -1;
+        if (matchesRegistration(m_passwordIndex)) m_passwordIndex = {};
         return true;
     } else if (isSpecificUsernamePassword(rawPV)) {
         QString host = getHostFromSpecificUsernamePassword(rawPV);
         if (rawPV.endsWith("/username")) {
-            m_usernameIndexForHost[host] = -1;
+            if (matchesRegistration(m_usernameIndexForHost.value(host))) m_usernameIndexForHost.remove(host);
         } else if (rawPV.endsWith("/password")) {
-            m_passwordIndexForHost[host] = -1;
+            if (matchesRegistration(m_passwordIndexForHost.value(host))) m_passwordIndexForHost.remove(host);
         }
         return true;
     } else if (isPemPassword(rawPV)) {
-        m_pemPasswordIndex = -1;
+        if (matchesRegistration(m_pemPasswordIndex)) m_pemPasswordIndex = {};
         return true;
     }
 
@@ -545,36 +580,18 @@ QString OPCUAPlugin::getHostFromSpecificUsernamePassword(const QString &pv) cons
 bool OPCUAPlugin::setCredentialsPV(const QString &pvString, const char *sdata)
 {
     if (isGeneralUsernamePassword(pvString)) {
-        int index;
-        QString newValue = "";
-        knobData kData;
+        MutexKnobData::MonitorHandle handle;
+        QString newValue;
         if (pvString == "username") {
-            index = m_usernameIndex;
-            if (index == -1) {
-                return false;
-            }
-
-            m_generalPasswordCredentials.username = QString::fromUtf8(sdata);
-
-            kData = m_mutexKnobDataP->GetMutexKnobData(index);
+            handle = m_usernameIndex;
             newValue = QString::fromUtf8(sdata);
         } else if (pvString == "password") {
-            index = m_passwordIndex;
-            if (index == -1) {
-                return false;
-            }
-
-            m_generalPasswordCredentials.password = QString::fromUtf8(sdata);
-
-            kData = m_mutexKnobDataP->GetMutexKnobData(index);
+            handle = m_passwordIndex;
             newValue = PASSWORD_PLACEHOLDER;
         }
-
-        copyStringToDataB(kData, newValue);
-
-        kData.edata.valueCount = kData.edata.nelm = 1;
-        kData.edata.monitorCount++;
-        m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
+        if (!publishCredentialsPV(handle, newValue, false)) return false;
+        if (pvString == "username") m_generalPasswordCredentials.username = QString::fromUtf8(sdata);
+        else m_generalPasswordCredentials.password = QString::fromUtf8(sdata);
 
         if (isPasswordCredentialsValid(m_generalPasswordCredentials)) {
             for (auto it = m_cores.constKeyValueBegin(); it != m_cores.constKeyValueEnd(); it++) {
@@ -590,37 +607,19 @@ bool OPCUAPlugin::setCredentialsPV(const QString &pvString, const char *sdata)
         }
         return true;
     } else if (isSpecificUsernamePassword(pvString)) {
-        int index;
-        QString newValue = "";
-        knobData kData;
+        MutexKnobData::MonitorHandle handle;
+        QString newValue;
         QString host = getHostFromSpecificUsernamePassword(pvString);
         if (pvString.endsWith("username")) {
-            index = m_usernameIndexForHost[host];
-            if (index == -1) {
-                return false;
-            }
-
-            m_passwordCredentialsForHost[host].username = QString::fromUtf8(sdata);
-
-            kData = m_mutexKnobDataP->GetMutexKnobData(index);
+            handle = m_usernameIndexForHost.value(host);
             newValue = QString::fromUtf8(sdata);
         } else if (pvString.endsWith("password")) {
-            index = m_passwordIndexForHost[host];
-            if (index == -1) {
-                return false;
-            }
-
-            m_passwordCredentialsForHost[host].password = QString::fromUtf8(sdata);
-
-            kData = m_mutexKnobDataP->GetMutexKnobData(index);
+            handle = m_passwordIndexForHost.value(host);
             newValue = PASSWORD_PLACEHOLDER;
         }
-
-        copyStringToDataB(kData, newValue);
-
-        kData.edata.valueCount = kData.edata.nelm = 1;
-        kData.edata.monitorCount++;
-        m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
+        if (!publishCredentialsPV(handle, newValue, false)) return false;
+        if (pvString.endsWith("username")) m_passwordCredentialsForHost[host].username = QString::fromUtf8(sdata);
+        else m_passwordCredentialsForHost[host].password = QString::fromUtf8(sdata);
 
         if (isPasswordCredentialsValid(m_passwordCredentialsForHost[host])) {
             QString endpoint = PROTOCOL_PREFIX + host;
@@ -630,21 +629,8 @@ bool OPCUAPlugin::setCredentialsPV(const QString &pvString, const char *sdata)
         }
         return true;
     } else if (isPemPassword(pvString)) {
-        int index = m_pemPasswordIndex;
-        if (index == -1) {
-            return false;
-        }
-
+        if (!publishCredentialsPV(m_pemPasswordIndex, PASSWORD_PLACEHOLDER, false)) return false;
         m_pemPassword = QString::fromUtf8(sdata);
-
-        knobData kData = m_mutexKnobDataP->GetMutexKnobData(index);
-        QString newValue = PASSWORD_PLACEHOLDER;
-
-        copyStringToDataB(kData, newValue);
-
-        kData.edata.valueCount = kData.edata.nelm = 1;
-        kData.edata.monitorCount++;
-        m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
 
         for (auto &core : m_cores) {
             core->setPemPassword(m_pemPassword);
