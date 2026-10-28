@@ -68,9 +68,11 @@ static_assert(std::is_same<std::tr1::shared_ptr<int>, std::shared_ptr<int> >::va
 namespace epics { namespace caqtdm { namespace epics4 {
 
 class PVAChannel;
+class PVAInterface;
 
 typedef std::shared_ptr<PVAChannel> PVAChannelPtr;
 typedef std::weak_ptr<PVAChannel> PVAChannelWPtr;
+typedef std::weak_ptr<PVAInterface> PVAInterfaceWPtr;
 typedef std::shared_ptr<epics::pvAccess::ChannelProvider> PVAChannelProviderPtr;
 
 }}}
@@ -122,7 +124,7 @@ public:
   private:
     static bool debug;
     std::map<std::string,epics::caqtdm::epics4::PVAChannelWPtr> pvaChannelMap;
-    std::map<std::string, int > pvMap;
+    std::map<std::string, epics::caqtdm::epics4::PVAInterfaceWPtr> pvMap;
     epics::caqtdm::epics4::Epics4RequesterPtr requester;
     epics::pvData::CallbackThreadPtr epics4_callbackThread;
     MutexKnobData * mutexKnobData;

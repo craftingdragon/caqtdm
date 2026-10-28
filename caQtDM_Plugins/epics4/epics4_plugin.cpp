@@ -51,9 +51,7 @@ using namespace epics::nt;
 namespace epics { namespace caqtdm { namespace epics4 {
 
 
-class PVAInterface;
 typedef std::shared_ptr<PVAInterface> PVAInterfacePtr;
-typedef std::weak_ptr<PVAInterface> PVAInterfaceWPtr;
 
 class PVAChannelRequester;
 typedef std::shared_ptr<PVAChannelRequester> PVAChannelRequesterPtr;
@@ -2016,13 +2014,13 @@ int Epics4Plugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
         pvaChannel = PVAChannelPtr(new PVAChannel(fullname, mapname, requester,epics4_callbackThread, providerN));
         if(!pvaChannel->connect(channelName,providerName)) return false;
         pvaChannelMap.insert(std::pair<string,PVAChannelWPtr>(mapname,pvaChannel));
-        pvMap.insert(std::pair<string,int>(mapname, kData->index));
         if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "created new and called connect";
     }
     PVAInterfacePtr pvaInterface(new PVAInterface(pvaChannel, mutexKnobData,index,requester,epics4_callbackThread));
     pvaInterfaceGlue = new PVAInterfaceGlue(pvaInterface);
     kData->edata.info = pvaInterfaceGlue;
     C_SetMutexKnobData(mutexKnobData, index, *kData);
+    pvMap[mapname] = pvaInterface;
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "calling addInterface";
     pvaChannel->addInterface(pvaInterface);
     return true;
@@ -2101,16 +2099,15 @@ bool Epics4Plugin::pvSetWave(knobData *kData,
 int Epics4Plugin::pvGetTimeStamp(char *pv, char *timestamp)
 {
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "Epics4Plugin:pvGetTimeStamp";
-    map<std::string, int>::iterator it = pvMap.begin();
+    auto it = pvMap.begin();
     while (it != pvMap.end()) {
         if (channelNameOf(it->first) == pv) {
-            knobData kData = mutexKnobData->GetMutexKnobData(it->second);
-            pvGetTimeStamp(&kData, timestamp);
-            break;
+            PVAInterfacePtr pvaInterface = it->second.lock();
+            if(pvaInterface) return pvaInterface->getTimeStamp(timestamp);
         }
         it++;
     }
-    return true;
+    return false;
 }
 
 bool Epics4Plugin::pvGetTimeStamp(knobData *kData, char *timestamp) {
@@ -2127,16 +2124,15 @@ bool Epics4Plugin::pvGetTimeStamp(knobData *kData, char *timestamp) {
 int Epics4Plugin::pvGetDescription(char *pv, char *description)
 {
     if(Epics4Plugin::getDebug()) qCDebug(::epics4Log) << "Epics4Plugin:pvGetDescription";
-    map<std::string, int>::iterator it = pvMap.begin();
+    auto it = pvMap.begin();
     while (it != pvMap.end()) {
         if (channelNameOf(it->first) == pv) {
-            knobData kData = mutexKnobData->GetMutexKnobData(it->second);
-            pvGetDescription(&kData, description);
-            break;
+            PVAInterfacePtr pvaInterface = it->second.lock();
+            if(pvaInterface) return pvaInterface->getDescription(description);
         }
         it++;
     }
-    return true;
+    return false;
 }
 
 bool Epics4Plugin::pvGetDescription(knobData *kData, char *description) {
