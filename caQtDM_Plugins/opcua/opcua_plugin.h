@@ -188,6 +188,10 @@ public:
 
 private:
     enum class ConnectionState { NotConnected, Connecting, Connected };
+    struct MonitorRegistration {
+        MutexKnobData::MonitorHandle handle;
+        void *mutex;
+    };
 
     QMutex m_mutex;
     MutexKnobData *m_mutexKnobDataP;
@@ -206,12 +210,12 @@ private:
     QMap<QString, MutexKnobData::MonitorHandle> m_passwordIndexForHost;
     // Maps host to respective PasswordCredentials
     QMap<QString, PasswordCredentials> m_passwordCredentialsForHost;
-    // Maps URI (endpoint + "/" + nodeId) to knobData index
-    QMultiMap<QString, int> m_channelCache;
+    // Maps URI (endpoint + "/" + nodeId) to the original monitor registration.
+    QMultiMap<QString, MonitorRegistration> m_channelCache;
     // Maps endpoint to core
     QMap<QString, OpcUaCore *> m_cores;
-    // Maps endpoint to all knobData indices handled by it
-    QMap<QString, QList<int>> m_knobDataIndicesForEndpoint;
+    // Maps endpoint to all monitor registrations handled by it.
+    QMap<QString, QList<MonitorRegistration>> m_knobDataIndicesForEndpoint;
     // Maps endpoint to connectionstate
     QMap<QString, ConnectionState> m_connectionState;
     // Maps endpoint to list of SubscriptionSettings to subscribe to
@@ -226,7 +230,7 @@ private:
      * @param knobData: knobData to copy into
      * @param value: value to copy
      */
-    void copyStringToDataB(knobData &kData, const QString &value) const;
+    bool copyStringToDataB(knobData &kData, const QString &value) const;
     bool publishCredentialsPV(MutexKnobData::MonitorHandle handle,
                               const QString &value, bool initialize);
 
@@ -309,7 +313,7 @@ private:
      * @param value: Value to store
      * @param detectedType: caType detected for the value
      */
-    void updateKnobDataFromVariantSingle(knobData &kData,
+    bool updateKnobDataFromVariantSingle(knobData &kData,
                                          const QVariant &value,
                                          const caType &detectedType);
     /**
@@ -318,7 +322,7 @@ private:
      * @param value: Value (waveform) to store
      * @param detectedType: caType detected for each variable in the 1D-array
      */
-    void updateKnobDataFromVariantArray(knobData &kData,
+    bool updateKnobDataFromVariantArray(knobData &kData,
                                         const QVariant &value,
                                         const caType &detectedType);
     /**
@@ -326,14 +330,8 @@ private:
      * @param kData: knobData to update
      * @param value: Value to store
      */
-    void updateKnobDataFromVariant(knobData &kData, QVariant value);
-    /**
-     * @brief Updates knobData to store the access level possible to an OpcUa variable
-     * @param kData: knobData to update
-     * @param accessR: Whether or not read access is possible
-     * @param accessW: Whether or not write access is possible
-     */
-    void updateKnobDataWithAccessLevel(knobData &kData, const bool &accessR, const bool &accessW);
+    bool updateKnobDataFromVariant(knobData &kData, QVariant value, bool *isArray);
+    bool publishValue(MutexKnobData::MonitorHandle handle, const QVariant &value);
     /**
      * @brief Updates extension PVs holding EPICS-record data associated with the pv (.FTVL/.NELM)
      * @param rawPV: Base pv for which the extension PVs should be updated

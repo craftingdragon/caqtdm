@@ -150,7 +150,7 @@ int OPCUAPlugin::initCommunicationLayer(MutexKnobData *data,
     return true;
 }
 
-void OPCUAPlugin::copyStringToDataB(knobData &kData, const QString &newValue) const
+bool OPCUAPlugin::copyStringToDataB(knobData &kData, const QString &newValue) const
 {
     QByteArray newValueBytes = newValue.toUtf8();
     if (kData.edata.dataB && kData.edata.dataSize != (newValueBytes.size() + 1)) {
@@ -160,8 +160,10 @@ void OPCUAPlugin::copyStringToDataB(knobData &kData, const QString &newValue) co
     if (!kData.edata.dataB) {
         kData.edata.dataSize = newValueBytes.size() + 1;
         kData.edata.dataB = malloc(static_cast<size_t>(kData.edata.dataSize));
+        if (!kData.edata.dataB) return false;
     }
     memcpy(kData.edata.dataB, newValueBytes.constData(), static_cast<size_t>(kData.edata.dataSize));
+    return true;
 }
 
 bool OPCUAPlugin::publishCredentialsPV(MutexKnobData::MonitorHandle handle,
@@ -323,13 +325,16 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
 
     const QString URI = endpoint + "/" + nodeId;
 
-    knobData *kDataPtr = m_mutexKnobDataP->GetMutexKnobDataPtr(index);
-    qstrncpy(kDataPtr->edata.fec, endpoint.toLatin1().constData(), caqtdm_string_t_length);
+    const auto handle = m_mutexKnobDataP->GetMutexKnobDataHandle(index);
+    if (!m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [&](knobData *stored) {
+            qstrncpy(stored->edata.fec, endpoint.toLatin1().constData(), caqtdm_string_t_length);
+        })) return false;
 
     int samplingIntervalMs = getUpdateIntervalFromKnobData(kData);
     SubscriptionSettings pendingSubscription = {nodeId, samplingIntervalMs};
 
-    m_channelCache.insert(URI, index);
+    const MonitorRegistration registration{handle, kData->mutex};
+    m_channelCache.insert(URI, registration);
 
     OpcUaCore *core;
     {
@@ -343,18 +348,10 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
                              &OpcUaCore::valueRead,
                              this,
                              [=](const QString &URI, const QVariant &value) {
+                                 if (m_cores.value(endpoint) != core) return;
                                  auto range = m_channelCache.equal_range(URI);
-                                 for (auto it = range.first; it != range.second; ++it) {
-                                     int idx = it.value();
-                                     knobData kData = m_mutexKnobDataP->GetMutexKnobData(idx);
-
-                                     updateKnobDataFromVariant(kData, value);
-                                     if (!kData.edata.connected) {
-                                         m_mutexKnobDataP->SetMutexKnobDataConnected(idx, true);
-                                     }
-
-                                     m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
-                                 }
+                                 for (auto it = range.first; it != range.second; ++it)
+                                     publishValue(it.value().handle, value);
                              });
 
             QObject::connect(core,
@@ -363,28 +360,32 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
                              [=](const QString &URI,
                                  const bool &readAccess,
                                  const bool &writeAccess) {
+                                 if (m_cores.value(endpoint) != core) return;
                                  auto range = m_channelCache.equal_range(URI);
                                  for (auto it = range.first; it != range.second; ++it) {
-                                     int idx = it.value();
-                                     m_mutexKnobDataP->SetMutexKnobDataConnected(idx, true);
-
-                                     knobData kData = m_mutexKnobDataP->GetMutexKnobData(idx);
-
-                                     updateKnobDataWithAccessLevel(kData, readAccess, writeAccess);
+                                     const auto handle = it.value().handle;
+                                     knobData kData;
+                                     if (!m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [&](knobData *stored) {
+                                             stored->edata.connected = true;
+                                             stored->edata.accessR = readAccess;
+                                             stored->edata.accessW = writeAccess;
+                                         }) || !m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData))
+                                         continue;
                                      updateEpicsWaveformAttributePVs(kData.pv, kData);
-
-                                     m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
+                                     m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &kData);
                                  }
                              });
 
             QObject::connect(core, &OpcUaCore::disconnected, this, [=]() {
+                if (m_cores.value(endpoint) != core) return;
                 m_connectionState[endpoint] = ConnectionState::NotConnected;
-                for (int idx : m_knobDataIndicesForEndpoint[endpoint]) {
-                    m_mutexKnobDataP->SetMutexKnobDataConnected(idx, false);
-
-                    knobData kData = m_mutexKnobDataP->GetMutexKnobData(idx);
-
-                    updateEpicsWaveformAttributePVs(kData.pv, kData);
+                for (const auto &registration : m_knobDataIndicesForEndpoint[endpoint]) {
+                    const auto handle = registration.handle;
+                    if (!m_mutexKnobDataP->SetMutexKnobDataConnectedIfCurrent(handle, false))
+                        continue;
+                    knobData kData;
+                    if (m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData))
+                        updateEpicsWaveformAttributePVs(kData.pv, kData);
                 }
 
                 if (m_knobDataIndicesForEndpoint[endpoint].length() > 0) {
@@ -396,6 +397,7 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
             });
 
             QObject::connect(core, &OpcUaCore::connected, this, [=]() {
+                if (m_cores.value(endpoint) != core) return;
                 m_connectionState[endpoint] = ConnectionState::Connected;
                 if (m_messageWindowP) {
                     QString info = QString("OPCUA: Connected to %1").arg(endpoint);
@@ -413,18 +415,19 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
                              &OpcUaCore::attributeGotError,
                              this,
                              [=](const QString &URI, const QString &errorMsg) {
+                                 if (m_cores.value(endpoint) != core) return;
                                  auto range = m_channelCache.equal_range(URI);
                                  for (auto it = range.first; it != range.second; ++it) {
-                                     int idx = it.value();
-                                     knobData kData = m_mutexKnobDataP->GetMutexKnobData(idx);
-
+                                     const auto handle = it.value().handle;
                                      qCCritical(opcuaLog)
                                          << "nodeId: " << nodeId << " got error: " << errorMsg;
-
-                                     kData.edata.severity = INVALID_ALARM;
-                                     kData.edata.status = 1; // READ_ALARM
-                                     m_mutexKnobDataP->SetMutexKnobData(kData.index, kData);
-                                     m_mutexKnobDataP->SetMutexKnobDataReceived(&kData);
+                                     if (!m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [](knobData *stored) {
+                                             stored->edata.severity = INVALID_ALARM;
+                                             stored->edata.status = 1; // READ_ALARM
+                                         })) continue;
+                                     knobData kData;
+                                     if (m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData))
+                                         m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &kData);
                                  }
                              });
 
@@ -444,7 +447,7 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
         core->updatePasswordCredentials(m_generalPasswordCredentials);
     }
 
-    m_knobDataIndicesForEndpoint[endpoint].push_back(index);
+    m_knobDataIndicesForEndpoint[endpoint].push_back(registration);
 
     QMutexLocker lock(&m_mutex);
     ConnectionState state = m_connectionState[endpoint];
@@ -533,8 +536,27 @@ int OPCUAPlugin::pvClearMonitor(knobData *kData)
         return false;
     }
 
-    m_knobDataIndicesForEndpoint[endpoint].removeAll(index);
-    m_channelCache.remove(URI, index);
+    const auto matchesOrdinaryRegistration = [&](const MonitorRegistration &registration) {
+        return registration.handle.index == kData->index && registration.mutex == kData->mutex;
+    };
+    bool removed = false;
+    auto &endpointHandles = m_knobDataIndicesForEndpoint[endpoint];
+    for (int i = endpointHandles.size() - 1; i >= 0; --i) {
+        if (matchesOrdinaryRegistration(endpointHandles.at(i))) {
+            endpointHandles.removeAt(i);
+            removed = true;
+        }
+    }
+    auto range = m_channelCache.equal_range(URI);
+    for (auto it = range.first; it != range.second;) {
+        if (matchesOrdinaryRegistration(it.value())) {
+            it = m_channelCache.erase(it);
+            removed = true;
+        } else {
+            ++it;
+        }
+    }
+    if (!removed) return true;
 
     // In case other knobDatas still use this node, return
     if (m_channelCache.contains(URI))
@@ -1006,7 +1028,7 @@ caType OPCUAPlugin::generateCaTypeFromVariant(const QVariant &value,
     }
 }
 
-void OPCUAPlugin::updateKnobDataFromVariantSingle(knobData &kData,
+bool OPCUAPlugin::updateKnobDataFromVariantSingle(knobData &kData,
                                                   const QVariant &value,
                                                   const caType &detectedType)
 {
@@ -1036,14 +1058,15 @@ void OPCUAPlugin::updateKnobDataFromVariantSingle(knobData &kData,
         if (QT_VARIANT_TYPE(value)==QMetaType::QDateTime) {
             QDateTime now = QDateTime::currentDateTime();
             QString utcInfo = QTimeZone::systemTimeZone().displayName(now, QTimeZone::OffsetName);
-            copyStringToDataB(kData, value.toDateTime().toString(Qt::ISODateWithMs)+" ("+utcInfo+")" );
-        } else copyStringToDataB(kData, value.toString());
+            return copyStringToDataB(kData, value.toDateTime().toString(Qt::ISODateWithMs)+" ("+utcInfo+")" );
+        } else return copyStringToDataB(kData, value.toString());
         break;
     default:
         kData.edata.rvalue = 0.0;
         kData.edata.ivalue = 0;
         break;
     }
+    return true;
 }
 
 void OPCUAPlugin::updateEpicsWaveformAttributePVs(QString rawPV, const knobData &referenceKnobData)
@@ -1078,16 +1101,13 @@ void OPCUAPlugin::updateEpicsWaveformAttributePVs(QString rawPV, const knobData 
     }
 }
 
-void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
+bool OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
                                                  const QVariant &value,
                                                  const caType &detectedType)
 {
     QList<QVariant> list = value.toList();
     int num_values = list.count();
     kData.edata.valueCount = kData.edata.nelm = num_values;
-
-    QString rawPV = QString::fromUtf8(kData.pv);
-    updateEpicsWaveformAttributePVs(rawPV, kData);
 
     switch (detectedType) {
     case caDOUBLE: {
@@ -1099,6 +1119,7 @@ void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
         if (!kData.edata.dataB) {
             kData.edata.dataSize = num_values * sizeof(double);
             kData.edata.dataB = malloc(static_cast<size_t>(kData.edata.dataSize));
+            if (!kData.edata.dataB) return false;
         }
 
         double *intBuffer = static_cast<double *>(kData.edata.dataB);
@@ -1118,6 +1139,7 @@ void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
         if (!kData.edata.dataB) {
             kData.edata.dataSize = num_values * sizeof(float);
             kData.edata.dataB = malloc(static_cast<size_t>(kData.edata.dataSize));
+            if (!kData.edata.dataB) return false;
         }
 
         float *intBuffer = static_cast<float *>(kData.edata.dataB);
@@ -1137,6 +1159,7 @@ void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
         if (!kData.edata.dataB) {
             kData.edata.dataSize = num_values * sizeof(int32_t);
             kData.edata.dataB = malloc(static_cast<size_t>(kData.edata.dataSize));
+            if (!kData.edata.dataB) return false;
         }
 
         int32_t *intBuffer = static_cast<int32_t *>(kData.edata.dataB);
@@ -1156,6 +1179,7 @@ void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
         if (!kData.edata.dataB) {
             kData.edata.dataSize = num_values * sizeof(int16_t);
             kData.edata.dataB = malloc(static_cast<size_t>(kData.edata.dataSize));
+            if (!kData.edata.dataB) return false;
         }
 
         int16_t *intBuffer = static_cast<int16_t *>(kData.edata.dataB);
@@ -1168,19 +1192,18 @@ void OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
     }
     case caSTRING: {
         QVariant firstValue = list.constFirst();
-        copyStringToDataB(kData, firstValue.toString());
-        break;
+        return copyStringToDataB(kData, firstValue.toString());
     }
     default:
         kData.edata.rvalue = 0.0;
         kData.edata.ivalue = 0;
         break;
     }
+    return true;
 }
 
-void OPCUAPlugin::updateKnobDataFromVariant(knobData &kData, QVariant value)
+bool OPCUAPlugin::updateKnobDataFromVariant(knobData &kData, QVariant value, bool *isArrayResult)
 {
-    QMutexLocker locker(static_cast<QMutex *>(kData.mutex));
     bool isArray = false;
     bool isMatrix = false;
     caType detectedType = generateCaTypeFromVariant(value, isArray, isMatrix);
@@ -1189,22 +1212,54 @@ void OPCUAPlugin::updateKnobDataFromVariant(knobData &kData, QVariant value)
     }
     kData.edata.fieldtype = detectedType;
     kData.edata.connected = 1;
-    kData.edata.monitorCount++;
 
-    if (isArray) {
-        updateKnobDataFromVariantArray(kData, value, detectedType);
-    } else {
-        updateKnobDataFromVariantSingle(kData, value, detectedType);
-    }
+    *isArrayResult = isArray;
+    if (isArray)
+        return updateKnobDataFromVariantArray(kData, value, detectedType);
+    return updateKnobDataFromVariantSingle(kData, value, detectedType);
 }
 
-void OPCUAPlugin::updateKnobDataWithAccessLevel(knobData &kData,
-                                                const bool &accessR,
-                                                const bool &accessW)
+bool OPCUAPlugin::publishValue(MutexKnobData::MonitorHandle handle, const QVariant &value)
 {
-    QMutexLocker locker(static_cast<QMutex *>(kData.mutex));
-    kData.edata.accessR = accessR;
-    kData.edata.accessW = accessW;
+    knobData lockData;
+    if (!m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &lockData)) return false;
+
+    // Decode against an independent buffer. A knobData copy only borrows dataB;
+    // decoding directly into that copy could free another registration's data.
+    knobData decoded = lockData;
+    decoded.edata.dataB = Q_NULLPTR;
+    decoded.edata.dataSize = 0;
+    bool isArray = false;
+    if (!updateKnobDataFromVariant(decoded, value, &isArray)) {
+        free(decoded.edata.dataB);
+        return false;
+    }
+    const bool hasPayload = decoded.edata.dataB != Q_NULLPTR;
+
+    m_mutexKnobDataP->DataLock(&lockData);
+    const bool updated = m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [&](knobData *stored) {
+        stored->edata.fieldtype = decoded.edata.fieldtype;
+        stored->edata.connected = decoded.edata.connected;
+        stored->edata.monitorCount++;
+        stored->edata.valueCount = decoded.edata.valueCount;
+        stored->edata.nelm = decoded.edata.nelm;
+        stored->edata.rvalue = decoded.edata.rvalue;
+        stored->edata.ivalue = decoded.edata.ivalue;
+        stored->edata.precision = decoded.edata.precision;
+        if (hasPayload) {
+            free(stored->edata.dataB);
+            stored->edata.dataB = decoded.edata.dataB;
+            stored->edata.dataSize = decoded.edata.dataSize;
+            decoded.edata.dataB = Q_NULLPTR;
+        }
+    });
+    knobData published;
+    const bool delivered = updated && m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &published)
+                           && m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &published);
+    m_mutexKnobDataP->DataUnlock(&lockData);
+    free(decoded.edata.dataB);
+    if (delivered && isArray) updateEpicsWaveformAttributePVs(published.pv, published);
+    return delivered;
 }
 
 int OPCUAPlugin::getUpdateIntervalFromKnobData(knobData *kData) const
