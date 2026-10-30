@@ -295,18 +295,16 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
     if (rawPV.endsWith(".FTVL")) {
         QString regularPV = rawPV;
         regularPV.remove(rawPV.length() - 5, 5);
-        if (!m_epicsWaveformAttributePVs.contains(regularPV)) {
-            m_epicsWaveformAttributePVs[regularPV] = {-1, -1};
-        }
-        m_epicsWaveformAttributePVs[regularPV].FTVL_index = index;
+        const auto handle = m_mutexKnobDataP->GetMutexKnobDataHandle(index);
+        if (!handle.isValid()) return false;
+        m_epicsWaveformAttributePVs[regularPV].FTVL = handle;
         return true;
     } else if (rawPV.endsWith(".NELM")) {
         QString regularPV = rawPV;
         regularPV.remove(rawPV.length() - 5, 5);
-        if (!m_epicsWaveformAttributePVs.contains(regularPV)) {
-            m_epicsWaveformAttributePVs[regularPV] = {-1, -1};
-        }
-        m_epicsWaveformAttributePVs[regularPV].NELM_index = index;
+        const auto handle = m_mutexKnobDataP->GetMutexKnobDataHandle(index);
+        if (!handle.isValid()) return false;
+        m_epicsWaveformAttributePVs[regularPV].NELM = handle;
         return true;
     } else if (isGeneralUsernamePassword(rawPV) || isSpecificUsernamePassword(rawPV)
                || isPemPassword(rawPV)) {
@@ -371,7 +369,7 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
                                              stored->edata.accessW = writeAccess;
                                          }) || !m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData))
                                          continue;
-                                     updateEpicsWaveformAttributePVs(kData.pv, kData);
+                                     updateEpicsWaveformAttributePVs(handle);
                                      m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &kData);
                                  }
                              });
@@ -383,9 +381,7 @@ int OPCUAPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip)
                     const auto handle = registration.handle;
                     if (!m_mutexKnobDataP->SetMutexKnobDataConnectedIfCurrent(handle, false))
                         continue;
-                    knobData kData;
-                    if (m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &kData))
-                        updateEpicsWaveformAttributePVs(kData.pv, kData);
+                    updateEpicsWaveformAttributePVs(handle);
                 }
 
                 if (m_knobDataIndicesForEndpoint[endpoint].length() > 0) {
@@ -483,18 +479,20 @@ int OPCUAPlugin::pvClearMonitor(knobData *kData)
     if (rawPV.endsWith(".FTVL")) {
         QString regularPV = rawPV;
         regularPV.remove(rawPV.length() - 5, 5);
-        if (!m_epicsWaveformAttributePVs.contains(regularPV)) {
-            m_epicsWaveformAttributePVs[regularPV] = {-1, -1};
+        auto it = m_epicsWaveformAttributePVs.find(regularPV);
+        if (it != m_epicsWaveformAttributePVs.end() && matchesRegistration(it->FTVL)) {
+            it->FTVL = {};
+            if (!it->NELM.isValid()) m_epicsWaveformAttributePVs.erase(it);
         }
-        m_epicsWaveformAttributePVs[regularPV].FTVL_index = -1;
         return true;
     } else if (rawPV.endsWith(".NELM")) {
         QString regularPV = rawPV;
         regularPV.remove(rawPV.length() - 5, 5);
-        if (!m_epicsWaveformAttributePVs.contains(regularPV)) {
-            m_epicsWaveformAttributePVs[regularPV] = {-1, -1};
+        auto it = m_epicsWaveformAttributePVs.find(regularPV);
+        if (it != m_epicsWaveformAttributePVs.end() && matchesRegistration(it->NELM)) {
+            it->NELM = {};
+            if (!it->FTVL.isValid()) m_epicsWaveformAttributePVs.erase(it);
         }
-        m_epicsWaveformAttributePVs[regularPV].NELM_index = -1;
         return true;
     } else if (rawPV == "username") {
         if (matchesRegistration(m_usernameIndex)) m_usernameIndex = {};
@@ -1069,36 +1067,30 @@ bool OPCUAPlugin::updateKnobDataFromVariantSingle(knobData &kData,
     return true;
 }
 
-void OPCUAPlugin::updateEpicsWaveformAttributePVs(QString rawPV, const knobData &referenceKnobData)
+void OPCUAPlugin::updateEpicsWaveformAttributePVs(MutexKnobData::MonitorHandle referenceHandle)
 {
-    if (rawPV.endsWith(".FTVL") || rawPV.endsWith(".NELM")) {
-        rawPV.remove(rawPV.length() - 5, 5);
-    }
-    if (m_epicsWaveformAttributePVs.contains(rawPV)) {
-        EpicsWaveformAttributePVs indices = m_epicsWaveformAttributePVs[rawPV];
-        if (indices.FTVL_index != -1) {
-            knobData FTVL_kData = m_mutexKnobDataP->GetMutexKnobData(indices.FTVL_index);
-            FTVL_kData.edata.connected = referenceKnobData.edata.connected;
-            FTVL_kData.edata.ivalue = referenceKnobData.edata.fieldtype;
-            FTVL_kData.edata.rvalue = FTVL_kData.edata.ivalue;
-            FTVL_kData.edata.fieldtype = caINT;
-            FTVL_kData.edata.accessR = true;
-            FTVL_kData.edata.accessW = false;
-            FTVL_kData.edata.monitorCount++;
-            m_mutexKnobDataP->SetMutexKnobDataReceived(&FTVL_kData);
-        }
-        if (indices.NELM_index != -1) {
-            knobData NELM_kData = m_mutexKnobDataP->GetMutexKnobData(indices.NELM_index);
-            NELM_kData.edata.connected = referenceKnobData.edata.connected;
-            NELM_kData.edata.ivalue = referenceKnobData.edata.valueCount;
-            NELM_kData.edata.rvalue = NELM_kData.edata.ivalue;
-            NELM_kData.edata.fieldtype = caINT;
-            NELM_kData.edata.accessR = true;
-            NELM_kData.edata.accessW = false;
-            NELM_kData.edata.monitorCount++;
-            m_mutexKnobDataP->SetMutexKnobDataReceived(&NELM_kData);
-        }
-    }
+    knobData reference;
+    if (!m_mutexKnobDataP->GetMutexKnobDataIfCurrent(referenceHandle, &reference)) return;
+    const QString rawPV = QString::fromUtf8(reference.pv);
+    const auto it = m_epicsWaveformAttributePVs.constFind(rawPV);
+    if (it == m_epicsWaveformAttributePVs.constEnd()) return;
+
+    const auto publishAttribute = [&](MutexKnobData::MonitorHandle handle, int value) {
+        if (!m_mutexKnobDataP->UpdateMutexKnobDataIfCurrent(handle, [&](knobData *stored) {
+                stored->edata.connected = reference.edata.connected;
+                stored->edata.ivalue = value;
+                stored->edata.rvalue = value;
+                stored->edata.fieldtype = caINT;
+                stored->edata.accessR = true;
+                stored->edata.accessW = false;
+                stored->edata.monitorCount++;
+            })) return;
+        knobData published;
+        if (m_mutexKnobDataP->GetMutexKnobDataIfCurrent(handle, &published))
+            m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &published);
+    };
+    publishAttribute(it->FTVL, reference.edata.fieldtype);
+    publishAttribute(it->NELM, reference.edata.valueCount);
 }
 
 bool OPCUAPlugin::updateKnobDataFromVariantArray(knobData &kData,
@@ -1258,7 +1250,7 @@ bool OPCUAPlugin::publishValue(MutexKnobData::MonitorHandle handle, const QVaria
                            && m_mutexKnobDataP->SetMutexKnobDataReceivedIfCurrent(handle, &published);
     m_mutexKnobDataP->DataUnlock(&lockData);
     free(decoded.edata.dataB);
-    if (delivered && isArray) updateEpicsWaveformAttributePVs(published.pv, published);
+    if (delivered && isArray) updateEpicsWaveformAttributePVs(handle);
     return delivered;
 }
 

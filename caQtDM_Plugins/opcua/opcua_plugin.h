@@ -40,13 +40,6 @@
 #include <QtConcurrentRun>
 #endif
 
-// Holds the mutexKnobData indices for channels carrying EPICS waveform attributes corresponding to a channel (.NELM, .FTVL)
-typedef struct
-{
-    int NELM_index;
-    int FTVL_index;
-} EpicsWaveformAttributePVs;
-
 class Q_DECL_EXPORT OPCUAPlugin : public QObject, ControlsInterface
 {
     Q_OBJECT
@@ -192,6 +185,10 @@ private:
         MutexKnobData::MonitorHandle handle;
         void *mutex;
     };
+    struct EpicsWaveformAttributePVs {
+        MutexKnobData::MonitorHandle NELM;
+        MutexKnobData::MonitorHandle FTVL;
+    };
 
     QMutex m_mutex;
     MutexKnobData *m_mutexKnobDataP;
@@ -222,7 +219,7 @@ private:
     QMap<QString, QList<SubscriptionSettings>> m_pendingSubscriptions;
     // Maps pv (without .NELM /.FTVL) to struct containing knobData indices of those channel extensions
     QMap<QString, EpicsWaveformAttributePVs> m_epicsWaveformAttributePVs;
-    // Maps pvs (as keys)) to values that should be used instead of them in the OpcUa context
+    // Maps pvs (as keys) to values that should be used instead of them in the OpcUa context
     QMap<QString, QString> m_translationMap;
 
     /**
@@ -334,10 +331,9 @@ private:
     bool publishValue(MutexKnobData::MonitorHandle handle, const QVariant &value);
     /**
      * @brief Updates extension PVs holding EPICS-record data associated with the pv (.FTVL/.NELM)
-     * @param rawPV: Base pv for which the extension PVs should be updated
-     * @param referenceKnobData: knobData of the base pv
+     * @param referenceHandle: registration of the base pv
      */
-    void updateEpicsWaveformAttributePVs(QString rawPV, const knobData &referenceKnobData);
+    void updateEpicsWaveformAttributePVs(MutexKnobData::MonitorHandle referenceHandle);
 
 #ifdef HARDWORK
     void updateHardwork();
