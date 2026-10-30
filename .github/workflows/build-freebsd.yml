@@ -31,7 +31,7 @@ jobs:
             command -v "$tool" >/dev/null || { echo "::error::Missing build tool: $tool"; exit 1; }
           done
 
-          export EPICS_BASE=/usr/local/epics/base-7.0.10
+          export EPICS_BASE=/usr/local/epics/base-7.0.11
           EPICS_HOST_ARCH="$("$EPICS_BASE/startup/EpicsHostArch")"
           EPICSLIB="$EPICS_BASE/lib/$EPICS_HOST_ARCH"
           QWTLIB=/usr/local/lib/qt6
@@ -120,14 +120,14 @@ jobs:
 
           cat > "$epics_metadata/+MANIFEST" <<EOF
           name: epics-base
-          version: 7.0.10
+          version: 7.0.11
           origin: science/epics-base
           comment: EPICS Base libraries and tools
           maintainer: helge.brands@psi.ch
           www: https://epics-controls.org/
           prefix: /usr/local
           arch: $package_arch
-          desc: "EPICS Base 7.0.10 tools, libraries, headers and build support."
+          desc: "EPICS Base 7.0.11 tools, libraries, headers and build support."
           EOF
 
           find "$epics_root/usr/local" \( -type f -o -type l \) -print | sed "s#^$epics_root##" | sort > "$epics_metadata/pkg-plist"
@@ -135,8 +135,8 @@ jobs:
             grep -Fx "$file" "$epics_metadata/pkg-plist"
           done
           pkg create -r "$epics_root" -m "$epics_metadata" -p "$epics_metadata/pkg-plist" -o "$CI_SOURCE/packages"
-          test -f "$CI_SOURCE/packages/epics-base-7.0.10.pkg"
-          pkg info -F "$CI_SOURCE/packages/epics-base-7.0.10.pkg"
+          test -f "$CI_SOURCE/packages/epics-base-7.0.11.pkg"
+          pkg info -F "$CI_SOURCE/packages/epics-base-7.0.11.pkg"
 
       - name: Create caQtDM package
         run: |
@@ -163,7 +163,7 @@ jobs:
           www: https://caqtdm.github.io/
           prefix: /usr/local
           arch: $package_arch
-          desc: "caQtDM with EPICS, Modbus and GPS plugins. Requires EPICS Base at /usr/local/epics/base-7.0.10."
+          desc: "caQtDM with EPICS, Modbus and GPS plugins. Requires EPICS Base at /usr/local/epics/base-7.0.11."
           EOF
 
           printf 'deps: {\n' >> "$package_metadata/+MANIFEST"
@@ -171,14 +171,14 @@ jobs:
             read -r dependency_version dependency_origin < <(pkg query '%v %o' "$dependency")
             printf '  "%s": {version: "%s", origin: "%s"},\n' "$dependency" "$dependency_version" "$dependency_origin" >> "$package_metadata/+MANIFEST"
           done
-          printf '  "epics-base": {version: "7.0.10", origin: "science/epics-base"}\n' >> "$package_metadata/+MANIFEST"
+          printf '  "epics-base": {version: "7.0.11", origin: "science/epics-base"}\n' >> "$package_metadata/+MANIFEST"
           printf '}\n' >> "$package_metadata/+MANIFEST"
 
           find "$package_root/usr/local" \( -type f -o -type l \) -print | sed "s#^$package_root##" | sort > "$package_metadata/pkg-plist"
           pkg create -r "$package_root" -m "$package_metadata" -p "$package_metadata/pkg-plist" -o "$CI_SOURCE/packages"
           test -f "$CI_SOURCE/packages/caqtdm-$package_version.pkg"
           pkg info -F "$CI_SOURCE/packages/caqtdm-$package_version.pkg"
-          pkg info -d -F "$CI_SOURCE/packages/caqtdm-$package_version.pkg" | grep -F 'epics-base-7.0.10'
+          pkg info -d -F "$CI_SOURCE/packages/caqtdm-$package_version.pkg" | grep -F 'epics-base-7.0.11'
 
       - name: Upload caQtDM package
         uses: actions/upload-artifact@v7.0.2
@@ -190,7 +190,7 @@ jobs:
       - name: Upload EPICS Base package
         uses: actions/upload-artifact@v7.0.2
         with:
-          path: ${{ env.CI_SOURCE }}/packages/epics-base-7.0.10.pkg
+          path: ${{ env.CI_SOURCE }}/packages/epics-base-7.0.11.pkg
           if-no-files-found: error
           archive: false
 
