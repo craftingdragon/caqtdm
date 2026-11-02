@@ -33,6 +33,7 @@
 #include <QGeoCoordinate>
 #include <QGeoPositionInfoSource>
 #include "controlsinterface.h"
+#include "mutexKnobData.h"
 
 
 class Q_DECL_EXPORT gpsPlugin : public QObject, ControlsInterface
@@ -71,12 +72,18 @@ private slots:
     void positionUpdated(const QGeoPositionInfo &info);
 
 private:
+    friend class TestGpsPlugin;
+    struct Registration {
+        MutexKnobData::MonitorHandle handle;
+        QString pv;
+    };
+    void publishValue(const Registration &registration, double value, bool increment, bool refreshMetadata);
     QMutex mutex;
     bool enable_gps_readout;
     MutexKnobData *mutexknobdataP;
     MessageWindow *messagewindowP;
     QMap<QString, double> listOfDoubles;
-    QList<int> listOfIndexes;
+    QList<Registration> registrations;
     double initValue;
     QTimer *timerValues;
     QGeoPositionInfoSource *pos_data_source;

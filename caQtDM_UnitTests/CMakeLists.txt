@@ -218,6 +218,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(tst_internal PRIVATE "LINKER:--disable-new-dtags")
 endif()
 
+if(CAQTDM_BUILD_GPS)
+    add_executable(tst_gps
+        tst_plugins/tst_gps/tst_gps.cpp
+        "${_plugins_root}/gps/gps_plugin.cpp"
+        "${_plugins_root}/gps/gps_plugin.h")
+    target_include_directories(tst_gps PRIVATE "${_lib_src}" "${_plugins_root}" "${_plugins_root}/gps")
+    target_link_libraries(tst_gps PRIVATE caqtdm_test_common qtcontrols caQtDM_Lib
+        ${CAQTDM_QT_PACKAGE}::Positioning ${CAQTDM_QT_PACKAGE}::Widgets)
+endif()
+
 if(CAQTDM_HAVE_BSREAD)
     add_executable(tst_bsread
         tst_plugins/tst_bsread/tst_bsread.cpp
@@ -267,6 +277,9 @@ endif()
 # CTest registration
 # --------------------------------------------------------------------------------------------------
 set(_all_tests tst_viewer tst_qtcontrols tst_lib tst_viewer_input tst_internal)
+if(TARGET tst_gps)
+    list(APPEND _all_tests tst_gps)
+endif()
 if(TARGET tst_bsread)
     list(APPEND _all_tests tst_bsread)
 endif()
@@ -326,6 +339,9 @@ caqtdm_apply_rpath(tst_qtcontrols)
 caqtdm_apply_rpath(tst_lib)
 caqtdm_apply_rpath(tst_viewer_input)
 caqtdm_apply_rpath(tst_internal)
+if(TARGET tst_gps)
+    caqtdm_apply_rpath(tst_gps)
+endif()
 if(TARGET tst_bsread)
     caqtdm_apply_rpath(tst_bsread)
 endif()

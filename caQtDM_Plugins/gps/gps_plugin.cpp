@@ -49,6 +49,7 @@ gpsPlugin::gpsPlugin()
     qCDebug(gpsLog) << "GPS: Create";
     enable_gps_readout=false;
     timerValues = Q_NULLPTR;
+    pos_data_source = Q_NULLPTR;
 }
 
 gpsPlugin::~gpsPlugin()
@@ -58,94 +59,81 @@ gpsPlugin::~gpsPlugin()
     }
 }
 
-// in this gps we update our interface here; normally you should update in from your controlsystem
-// take a look how monitors are treated in the epics3 plugin
+void gpsPlugin::publishValue(const Registration &registration, double value, bool increment, bool refreshMetadata)
+{
+    if (!mutexknobdataP->UpdateMutexKnobDataIfCurrent(registration.handle, [=](knobData *record) {
+            if (increment) {
+                record->edata.rvalue = value;
+                ++record->edata.monitorCount;
+            }
+            if (refreshMetadata) {
+                record->edata.fieldtype = caDOUBLE;
+                record->edata.connected = true;
+                record->edata.accessR = true;
+                record->edata.accessW = false;
+            }
+        })) {
+        return;
+    }
+
+    knobData snapshot;
+    if (mutexknobdataP->GetMutexKnobDataIfCurrent(registration.handle, &snapshot)) {
+        mutexknobdataP->SetMutexKnobDataReceivedIfCurrent(registration.handle, &snapshot);
+    }
+}
+
+// In this GPS plugin we update our interface here; normally this comes from the control system.
 void gpsPlugin::updateInterface()
 {
-    double newValue = 0.0;
-
     QMutexLocker locker(&mutex);
 
-    // go through our devices
-    foreach(int index, listOfIndexes) {
-        knobData* kData = mutexknobdataP->GetMutexKnobDataPtr(index);
-        if((kData != (knobData *) Q_NULLPTR) && (kData->index != -1)) {
-            QString key = kData->pv;
-
-            // find this pv in our internal double values list (assume for now we are only treating doubles)
-            // and increment its value
-            QMap<QString, double>::iterator i = listOfDoubles.find(key);
-            while (i !=listOfDoubles.end() && i.key() == key) {
-                newValue = i.value();
-                break;
-            }
-            // update some data
-            kData->edata.rvalue = newValue;
-            kData->edata.fieldtype = caDOUBLE;
-            kData->edata.connected = true;
-            kData->edata.accessR = true;
-            kData->edata.accessW = false;
-            kData->edata.monitorCount++;
-            mutexknobdataP->SetMutexKnobData(kData->index, *kData);
-            mutexknobdataP->SetMutexKnobDataReceived(kData);
-        }
+    for (const Registration &registration : registrations) {
+        const double value = listOfDoubles.value(registration.pv, 0.0);
+        publishValue(registration, value, true, true);
     }
 }
 
 void gpsPlugin::positionUpdated(const QGeoPositionInfo &info)
 {
-     qCDebug(gpsLog) << "Position updated:" << info;
-     QMutexLocker locker(&mutex);
-     if (!enable_gps_readout) return;
-     if (info.isValid()){
-         foreach(int index, listOfIndexes) {
-             knobData* kData = mutexknobdataP->GetMutexKnobDataPtr(index);
-             if((kData != (knobData *) Q_NULLPTR) && (kData->index != -1)) {
-                 QString key = kData->pv;
-                 if (key.compare("altitude",Qt::CaseInsensitive)==0){
-                     kData->edata.monitorCount++;
-                     kData->edata.rvalue= info.coordinate().altitude(); }
-                 if (key.compare("latitude",Qt::CaseInsensitive)==0){
-                     kData->edata.monitorCount++;
-                     kData->edata.rvalue= info.coordinate().latitude();}
-                 if (key.compare("longitude",Qt::CaseInsensitive)==0){
-                     kData->edata.monitorCount++;
-                     kData->edata.rvalue= info.coordinate().longitude();}
-                 if (key.compare("distanceTo",Qt::CaseInsensitive)==0){
-                     kData->edata.monitorCount++;
-                     const QGeoCoordinate d=distancedata;
-                     kData->edata.rvalue= info.coordinate().distanceTo(d);}
-                 if (key.compare("GroundSpeed",Qt::CaseInsensitive)==0)
-                     if (info.hasAttribute(QGeoPositionInfo::GroundSpeed))
-                     {
-                         kData->edata.monitorCount++;
-                         kData->edata.rvalue= info.attribute(QGeoPositionInfo::GroundSpeed);
-                     }
-                 if (key.compare("Direction",Qt::CaseInsensitive)==0)
-                     if (info.hasAttribute(QGeoPositionInfo::Direction))
-                     {
-                         kData->edata.monitorCount++;
-                         kData->edata.rvalue=  info.attribute(QGeoPositionInfo::Direction);
-                     }
-                 if (key.compare("HorizontalAccuracy",Qt::CaseInsensitive)==0)
-                     if (info.hasAttribute(QGeoPositionInfo::HorizontalAccuracy))
-                     {
-                         kData->edata.monitorCount++;
-                         kData->edata.rvalue= info.attribute(QGeoPositionInfo::HorizontalAccuracy);
-                     }
+    qCDebug(gpsLog) << "Position updated:" << info;
+    QMutexLocker locker(&mutex);
+    if (!enable_gps_readout || !info.isValid()) {
+        return;
+    }
 
+    for (const Registration &registration : registrations) {
+        const QString &key = registration.pv;
+        double value = 0.0;
+        bool changed = false;
 
+        if (key.compare("altitude", Qt::CaseInsensitive) == 0) {
+            value = info.coordinate().altitude();
+            changed = true;
+        } else if (key.compare("latitude", Qt::CaseInsensitive) == 0) {
+            value = info.coordinate().latitude();
+            changed = true;
+        } else if (key.compare("longitude", Qt::CaseInsensitive) == 0) {
+            value = info.coordinate().longitude();
+            changed = true;
+        } else if (key.compare("distanceTo", Qt::CaseInsensitive) == 0) {
+            value = info.coordinate().distanceTo(distancedata);
+            changed = true;
+        } else if (key.compare("GroundSpeed", Qt::CaseInsensitive) == 0 &&
+                   info.hasAttribute(QGeoPositionInfo::GroundSpeed)) {
+            value = info.attribute(QGeoPositionInfo::GroundSpeed);
+            changed = true;
+        } else if (key.compare("Direction", Qt::CaseInsensitive) == 0 &&
+                   info.hasAttribute(QGeoPositionInfo::Direction)) {
+            value = info.attribute(QGeoPositionInfo::Direction);
+            changed = true;
+        } else if (key.compare("HorizontalAccuracy", Qt::CaseInsensitive) == 0 &&
+                   info.hasAttribute(QGeoPositionInfo::HorizontalAccuracy)) {
+            value = info.attribute(QGeoPositionInfo::HorizontalAccuracy);
+            changed = true;
+        }
 
-
-                 mutexknobdataP->SetMutexKnobData(kData->index, *kData);
-                 mutexknobdataP->SetMutexKnobDataReceived(kData);
-
-
-             }
-         }
-     }
-
-
+        publishValue(registration, value, changed, false);
+    }
 }
 
 // in this gps we update our values here
@@ -255,24 +243,31 @@ int gpsPlugin::pvAddMonitor(int index, knobData *kData, int rate, int skip) {
         validkey=true;}
 
     if (!validkey) return false;
-    if(!enable_gps_readout){
-        pos_data_source->startUpdates();
-        enable_gps_readout=true;
-    }
-    // append device index to our internal list
-    listOfIndexes.append(kData->index);
+    const MutexKnobData::MonitorHandle handle = mutexknobdataP->GetMutexKnobDataHandle(kData->index);
+    if (!handle.isValid()) return false;
     // initial values into the doubles list
-    if(!listOfDoubles.contains(key)) listOfDoubles.insert(key, 0.0);
+    if (!listOfDoubles.contains(key)) {
+        listOfDoubles.insert(key, 0.0);
+    }
 
     kData->edata.fieldtype = caDOUBLE;
     kData->edata.precision = 6;
     kData->edata.connected = true;
     kData->edata.accessR = true;
     kData->edata.accessW = writeable;
-    kData->edata.monitorCount++;
-    mutexknobdataP->SetMutexKnobData(kData->index, *kData);
-    mutexknobdataP->SetMutexKnobDataReceived(kData);
-
+    ++kData->edata.monitorCount;
+    if (!mutexknobdataP->SetMutexKnobDataIfCurrent(handle, *kData)) {
+        return false;
+    }
+    registrations.append({handle, key});
+    knobData snapshot;
+    if (mutexknobdataP->GetMutexKnobDataIfCurrent(handle, &snapshot)) {
+        mutexknobdataP->SetMutexKnobDataReceivedIfCurrent(handle, &snapshot);
+    }
+    if (!enable_gps_readout && pos_data_source) {
+        pos_data_source->startUpdates();
+        enable_gps_readout = true;
+    }
 
     return true;
 }
@@ -283,8 +278,22 @@ int gpsPlugin::pvClearMonitor(knobData *kData) {
 
     qCDebug(gpsLog) << "gpsPlugin:pvClearMonitor" << kData->pv << kData->index;
     QString key = kData->pv;
-    if(!listOfDoubles.contains(key)) listOfDoubles.remove(key);
-    listOfIndexes.removeAll(kData->index);
+    for (int i = 0; i < registrations.size(); ++i) {
+        if (registrations.at(i).handle.index == kData->index && registrations.at(i).pv == key) {
+            registrations.removeAt(i);
+            break;
+        }
+    }
+    bool stillUsed = false;
+    for (const Registration &registration : registrations) {
+        if (registration.pv == key) {
+            stillUsed = true;
+            break;
+        }
+    }
+    if (!stillUsed) {
+        listOfDoubles.remove(key);
+    }
 
     return true;
 }
