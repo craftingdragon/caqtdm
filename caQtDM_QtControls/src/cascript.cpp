@@ -51,13 +51,14 @@ public:
     }
 
 public slots:
-    void execute(const QString &script)
+    void execute(const QString &script, const QVariantMap &inputs)
     {
         {
             QMutexLocker lock(&m_mutex);
             if (m_stopping) return;
             if (!m_engine) m_engine = new QJSEngine(this);
         }
+        m_engine->globalObject().setProperty(QStringLiteral("inputs"), m_engine->toScriptValue(inputs));
         const QJSValue result = m_engine->evaluate(
             QStringLiteral("(function() { try { (function() {\n") + script
                 + QStringLiteral("\n})(); return true; } catch (error) { return false; } })()"),
@@ -109,7 +110,24 @@ void caScript::executeScript()
         });
         m_executionThread->start();
     }
-    QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection, Q_ARG(QString, m_script));
+    QVariantMap snapshot;
+    for (int i = 0; i < m_inputChannels.size(); ++i) {
+        const InputChannel &input = m_inputChannels.at(i);
+        QVariantMap channel;
+        if (m_inputValues.contains(i)) {
+            channel.insert(QStringLiteral("value"), m_inputValues.value(i));
+        }
+        snapshot.insert(input.alias.isEmpty() ? input.channel : input.alias, channel);
+    }
+    QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
+                              Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot));
+}
+
+void caScript::updateInputValue(int index, const QVariant &value)
+{
+    if (index >= 0 && index < m_inputChannels.size()) {
+        m_inputValues.insert(index, value);
+    }
 }
 
 QString caScript::getScript() const
@@ -172,6 +190,7 @@ QList<caScript::InputChannel> caScript::getInputChannels() const
 void caScript::setInputChannels(const QList<InputChannel> &inputs)
 {
     m_inputChannels = inputs;
+    m_inputValues.clear();
     m_inputJsonError.clear();
 }
 

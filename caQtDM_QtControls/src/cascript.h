@@ -27,6 +27,7 @@
 #define CASCRIPT_H
 
 #include <QList>
+#include <QMap>
 #include <QStringList>
 #include <QWidget>
 #include <qtcontrols_global.h>
@@ -64,6 +65,7 @@ public:
 
 public slots:
     void executeScript();
+    void updateInputValue(int index, const QVariant &value);
 
 signals:
     void scriptFinished(bool success);
@@ -71,6 +73,7 @@ signals:
 private:
     QString m_script;
     QList<InputChannel> m_inputChannels;
+    QMap<int, QVariant> m_inputValues;
     QString m_inputJsonError;
     QThread *m_executionThread = nullptr;
     CaScriptWorker *m_worker = nullptr;

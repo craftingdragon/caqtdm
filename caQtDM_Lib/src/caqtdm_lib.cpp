@@ -6657,6 +6657,12 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         }
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
+    } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
+        if (data.edata.connected && data.edata.valueCount <= 1
+            && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT)) {
+            scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
+        }
+
     } else if(caAlarmTree *alarmTree = qobject_cast<caAlarmTree *>(w)) {
         alarmTree->dataUpdate(String, data);
 

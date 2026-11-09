@@ -248,13 +248,13 @@ void TestCaQtDM_Lib::cleanup()
 
 void TestCaQtDM_Lib::scriptReceivesMonitoredScalarThroughAlias()
 {
-    genSoftPV source(m_fakeFileOpenWindow);
+    genSoftPV source(m_parentAS);
     source.setVariable(QStringLiteral("scriptScalarInput"));
     source.setDataType(genSoftPV::Double);
     source.setValue(QStringLiteral("2.5"));
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
-    caScript script(m_fakeFileOpenWindow);
+    caScript script(m_parentAS);
     script.setInputChannels({
         {QStringLiteral("internal://scriptScalarInput"), QStringLiteral("factor")}
     });
