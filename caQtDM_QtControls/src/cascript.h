@@ -31,6 +31,9 @@
 #include <QWidget>
 #include <qtcontrols_global.h>
 
+class CaScriptWorker;
+class QThread;
+
 class QTCON_EXPORT caScript : public QWidget
 {
     Q_OBJECT
@@ -46,6 +49,7 @@ public:
     };
 
     explicit caScript(QWidget *parent = nullptr);
+    ~caScript() override;
 
     QString getScript() const;
     void setScript(const QString &script);
@@ -58,10 +62,19 @@ public:
 
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
+public slots:
+    void executeScript();
+
+signals:
+    void scriptFinished(bool success);
+
 private:
     QString m_script;
     QList<InputChannel> m_inputChannels;
     QString m_inputJsonError;
+    QThread *m_executionThread = nullptr;
+    CaScriptWorker *m_worker = nullptr;
+    bool m_running = false;
 };
 
 #endif // CASCRIPT_H

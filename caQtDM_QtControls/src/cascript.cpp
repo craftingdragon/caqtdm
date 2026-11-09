@@ -29,10 +29,87 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QJSEngine>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSet>
+#include <QThread>
+#include <QTimer>
+
+class CaScriptWorker : public QObject
+{
+    Q_OBJECT
+
+public:
+    void stop()
+    {
+        QMutexLocker lock(&m_mutex);
+        m_stopping = true;
+        if (m_engine) {
+            m_engine->setInterrupted(true);
+        }
+    }
+
+public slots:
+    void execute(const QString &script)
+    {
+        {
+            QMutexLocker lock(&m_mutex);
+            if (m_stopping) return;
+            if (!m_engine) m_engine = new QJSEngine(this);
+        }
+        const QJSValue result = m_engine->evaluate(
+            QStringLiteral("(function() {\n") + script + QStringLiteral("\n})()"),
+            QStringLiteral("caScript"), 0);
+        emit finished(!result.isError());
+    }
+
+signals:
+    void finished(bool success);
+
+private:
+    QMutex m_mutex;
+    QJSEngine *m_engine = nullptr;
+    bool m_stopping = false;
+};
 
 caScript::caScript(QWidget *parent) : QWidget(parent)
 {}
+
+caScript::~caScript()
+{
+    if (m_executionThread) {
+        m_worker->stop();
+        m_executionThread->quit();
+        m_executionThread->wait();
+    }
+}
+
+void caScript::executeScript()
+{
+    if (m_running) return;
+    m_running = true;
+    if (!inputConfigurationErrors().isEmpty()) {
+        QTimer::singleShot(0, this, [this]() {
+            m_running = false;
+            emit scriptFinished(false);
+        });
+        return;
+    }
+
+    if (!m_executionThread) {
+        m_executionThread = new QThread(this);
+        m_worker = new CaScriptWorker;
+        m_worker->moveToThread(m_executionThread);
+        connect(m_executionThread, &QThread::finished, m_worker, &QObject::deleteLater);
+        connect(m_worker, &CaScriptWorker::finished, this, [this](bool success) {
+            m_running = false;
+            emit scriptFinished(success);
+        });
+        m_executionThread->start();
+    }
+    QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection, Q_ARG(QString, m_script));
+}
 
 QString caScript::getScript() const
 {
@@ -105,6 +182,8 @@ QStringList caScript::inputConfigurationErrors() const
     }
     return errors;
 }
+
+#include "cascript.moc"
 
 QStringList caScript::validateInputChannels(const QList<InputChannel> &inputs)
 {
