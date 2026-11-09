@@ -26,6 +26,7 @@
 #include "tst_cascript.h"
 #include "cascript.h"
 
+#include <QJsonDocument>
 #include <QMetaProperty>
 #include <QTest>
 
@@ -106,4 +107,35 @@ void TestCaScript::inputConfigurationErrorsReflectCurrentInputs()
     });
 
     QVERIFY(widget.inputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
+{
+    const QList<caScript::InputChannel> inputs = {
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QString()}
+    };
+    caScript widget;
+    widget.setInputChannels(inputs);
+
+    const int index = widget.metaObject()->indexOfProperty("channels");
+    QVERIFY(index >= 0);
+    QVERIFY(widget.metaObject()->property(index).isStored());
+
+    const QString json = widget.property("channels").toString();
+    const QJsonDocument expected = QJsonDocument::fromJson(R"([
+        {"channel": "epics3://PACMAN:PACMAN_USER_SCORE", "alias": "score"},
+        {"channel": "internal://scriptFactor", "alias": ""}
+    ])");
+    QVERIFY(QJsonDocument::fromJson(json.toUtf8()) == expected);
+
+    caScript restored;
+    QVERIFY(restored.setProperty("channels", json));
+    const QList<caScript::InputChannel> restoredInputs = restored.getInputChannels();
+    QCOMPARE(restoredInputs.size(), inputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+        QCOMPARE(restoredInputs.at(i).channel, inputs.at(i).channel);
+        QCOMPARE(restoredInputs.at(i).alias, inputs.at(i).alias);
+    }
+    QVERIFY(restored.inputConfigurationErrors().isEmpty());
 }

@@ -39,6 +39,7 @@ private slots:
     void inputAliasCollidingWithChannelNameIsRejected();
     void emptyInputChannelWithAliasIsRejected();
     void inputConfigurationErrorsReflectCurrentInputs();
+    void inputConfigurationSurvivesJsonRoundTrip();
 };
 
 #endif // TST_CASCRIPT_H
