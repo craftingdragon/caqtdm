@@ -131,6 +131,7 @@ SOURCES	+= \
     src/uiconverter.cpp \
     src/catogglebutton.cpp \
     src/cascriptbutton.cpp \
+    src/cascript.cpp \
     src/cadoubletabwidget.cpp \
     src/stripplotthread.cpp \
     src/cawaterfallplot.cpp \
@@ -271,6 +272,7 @@ HEADERS	+= \
     src/uiconverter.h \
     src/catogglebutton.h \
     src/cascriptbutton.h \
+    src/cascript.h \
     src/cadoubletabwidget.h \
     src/stripplotthread.h \
     src/cawaterfallplot.h \
