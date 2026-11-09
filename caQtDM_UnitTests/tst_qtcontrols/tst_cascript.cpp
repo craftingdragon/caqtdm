@@ -66,3 +66,14 @@ void TestCaScript::distinctInputAliasesAreAccepted()
 
     QVERIFY(errors.isEmpty());
 }
+
+void TestCaScript::inputAliasCollidingWithChannelNameIsRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("internal://scriptFactor"), QString()},
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("internal://scriptFactor")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("internal://scriptFactor")));
+}

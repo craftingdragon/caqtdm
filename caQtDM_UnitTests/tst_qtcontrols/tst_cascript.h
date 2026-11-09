@@ -36,6 +36,7 @@ private slots:
     void scriptPropertyIsInitiallyEmptyAndWritable();
     void duplicateInputAliasesAreRejected();
     void distinctInputAliasesAreAccepted();
+    void inputAliasCollidingWithChannelNameIsRejected();
 };
 
 #endif // TST_CASCRIPT_H
