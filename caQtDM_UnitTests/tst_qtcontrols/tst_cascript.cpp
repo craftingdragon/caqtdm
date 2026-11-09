@@ -28,11 +28,13 @@
 
 #include <QJsonDocument>
 #include <QFile>
+#include <QElapsedTimer>
 #include <QFormBuilder>
 #include <QMetaProperty>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <memory>
 
@@ -214,6 +216,36 @@ void TestCaScript::thrownStringIsReportedAsFailure()
     QCOMPARE(arguments.size(), 1);
     QCOMPARE(arguments.first().userType(), int(QMetaType::Bool));
     QVERIFY(!arguments.first().toBool());
+}
+
+void TestCaScript::scriptExecutionKeepsGuiEventLoopResponsive()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral(
+        "const end = Date.now() + 400;\n"
+        "while (Date.now() < end) {}\n"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    bool timerFired = false;
+    bool timerFiredBeforeCompletion = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    connect(&timer, &QTimer::timeout, &widget, [&]() {
+        timerFired = true;
+        timerFiredBeforeCompletion = finished.isEmpty();
+    });
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    timer.start(20);
+    widget.executeScript();
+    QVERIFY2(elapsed.elapsed() < 300, "Starting the script blocked the GUI thread.");
+
+    QTRY_VERIFY(timerFired);
+    QVERIFY(timerFiredBeforeCompletion);
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
 }
 
 void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()

@@ -45,6 +45,7 @@ private slots:
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();
     void thrownStringIsReportedAsFailure();
+    void scriptExecutionKeepsGuiEventLoopResponsive();
 };
 
 #endif // TST_CASCRIPT_H
