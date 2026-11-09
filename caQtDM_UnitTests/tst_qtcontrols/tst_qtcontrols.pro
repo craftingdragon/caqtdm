@@ -1,7 +1,7 @@
 include (../../caQtDM_Viewer/qtdefs.pri)
 include(../unitTests.pri)
 
-QT += network gui widgets designer
+QT += network gui widgets designer qml
 
 SOURCES += tst_qtcontrols.cpp \
     tst_pvdialog.cpp \
