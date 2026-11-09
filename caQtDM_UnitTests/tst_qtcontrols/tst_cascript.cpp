@@ -109,6 +109,31 @@ void TestCaScript::inputConfigurationErrorsReflectCurrentInputs()
     QVERIFY(widget.inputConfigurationErrors().isEmpty());
 }
 
+void TestCaScript::invalidInputJsonPreservesInputsAndCanBeCorrected()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+    const QString previousJson = widget.getChannels();
+
+    widget.setChannels(QStringLiteral("[{"));
+    QVERIFY(!widget.inputConfigurationErrors().isEmpty());
+    QCOMPARE(widget.getChannels(), previousJson);
+    const QList<caScript::InputChannel> previousInputs = widget.getInputChannels();
+    QCOMPARE(previousInputs.size(), 1);
+    QCOMPARE(previousInputs.first().channel, QStringLiteral("internal://scriptFactor"));
+    QCOMPARE(previousInputs.first().alias, QStringLiteral("factor"));
+
+    widget.setChannels(QStringLiteral(
+        "[{\"channel\":\"epics3://PACMAN:PACMAN_USER_SCORE\",\"alias\":\"score\"}]"));
+    QVERIFY(widget.inputConfigurationErrors().isEmpty());
+    const QList<caScript::InputChannel> correctedInputs = widget.getInputChannels();
+    QCOMPARE(correctedInputs.size(), 1);
+    QCOMPARE(correctedInputs.first().channel, QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"));
+    QCOMPARE(correctedInputs.first().alias, QStringLiteral("score"));
+}
+
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 {
     const QList<caScript::InputChannel> inputs = {
