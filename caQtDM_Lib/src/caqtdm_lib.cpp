@@ -82,6 +82,7 @@
 
 #include "caqtdm_lib.h"
 #include "caalarmtree.h"      // not part of the QtControls umbrella header
+#include "cascript.h"
 #include "uiconverter.h"
 #include "fileFunctions.h"
 
@@ -3579,8 +3580,34 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
 
         connect(tableWidget, SIGNAL(TableDoubleClickedSignal(QString)), this, SLOT(Callback_TableDoubleClicked(QString)));
 
-        // alarm handler tree: the widget parses its alh configuration and lists the pvs, the lib subscribes and writes
+        // caScript inputs are subscribed by the lib, independently of the data plugin
         //==================================================================================================================
+    } else if(caScript* scriptWidget = qobject_cast<caScript *>(w1)) {
+        scriptWidget->setProperty("ObjectType", caScript_Widget);
+        scriptWidget->setProperty("Taken", true);
+        const QStringList errors = scriptWidget->inputConfigurationErrors();
+        if (!errors.isEmpty()) {
+            integerList.append(0);
+            scriptWidget->setProperty("MonitorList", integerList);
+            for (const QString &error : errors) {
+                const QString message = tr("caScript %1: %2").arg(w1->objectName(), error);
+                qCWarning(caQtDMLibLog).noquote() << message;
+                postMessage(QtWarningMsg, (char*) qasc(message));
+            }
+            return;
+        }
+
+        const QList<caScript::InputChannel> inputs = scriptWidget->getInputChannels();
+        for (int i = 0; i < inputs.size(); ++i) {
+            specData[0] = i;
+            w1->setToolTip(QString());
+            const int num = addMonitor(myWidget, &kData, inputs.at(i).channel, w1, specData, map, &pv);
+            integerList.append(num);
+            ++nbMonitors;
+        }
+        integerList.insert(0, nbMonitors);
+        scriptWidget->setProperty("MonitorList", integerList);
+
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
 
         w1->setProperty("ObjectType", caAlarmTree_Widget);
