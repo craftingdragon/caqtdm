@@ -30,6 +30,7 @@
 #include <QFile>
 #include <QFormBuilder>
 #include <QMetaProperty>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QVBoxLayout>
@@ -153,6 +154,25 @@ void TestCaScript::invalidInputJsonPreservesInputsAndCanBeCorrected()
     QCOMPARE(correctedInputs.size(), 1);
     QCOMPARE(correctedInputs.first().channel, QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"));
     QCOMPARE(correctedInputs.first().alias, QStringLiteral("score"));
+}
+
+void TestCaScript::simpleScriptCompletesAsynchronously()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral(
+        "const answer = 6 * 7;\n"
+        "if (answer !== 42) throw new Error('Unexpected result');\n"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    widget.executeScript();
+
+    QCOMPARE(finished.count(), 0);
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> arguments = finished.first();
+    QCOMPARE(arguments.size(), 1);
+    QCOMPARE(arguments.first().userType(), int(QMetaType::Bool));
+    QVERIFY(arguments.first().toBool());
 }
 
 void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
