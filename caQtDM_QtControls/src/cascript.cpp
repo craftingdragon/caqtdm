@@ -46,6 +46,11 @@ QStringList caScript::validateInputChannels(const QList<InputChannel> &inputs)
     QSet<QString> keys;
 
     for (const InputChannel &input : inputs) {
+        if (input.channel.isEmpty()) {
+            errors.append(tr("Input channel for alias \"%1\" is empty.").arg(input.alias));
+            continue;
+        }
+
         const QString key = input.alias.isEmpty() ? input.channel : input.alias;
         if (keys.contains(key)) {
             errors.append(tr("Duplicate input key \"%1\".").arg(key));
