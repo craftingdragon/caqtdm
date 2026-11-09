@@ -49,10 +49,14 @@ public:
     QString getScript() const;
     void setScript(const QString &script);
 
+    void setInputChannels(const QList<InputChannel> &inputs);
+    QStringList inputConfigurationErrors() const;
+
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
 private:
     QString m_script;
+    QList<InputChannel> m_inputChannels;
 };
 
 #endif // CASCRIPT_H

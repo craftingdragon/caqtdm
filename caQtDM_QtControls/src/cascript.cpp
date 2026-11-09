@@ -40,6 +40,16 @@ void caScript::setScript(const QString &script)
     m_script = script;
 }
 
+void caScript::setInputChannels(const QList<InputChannel> &inputs)
+{
+    m_inputChannels = inputs;
+}
+
+QStringList caScript::inputConfigurationErrors() const
+{
+    return validateInputChannels(m_inputChannels);
+}
+
 QStringList caScript::validateInputChannels(const QList<InputChannel> &inputs)
 {
     QStringList errors;
