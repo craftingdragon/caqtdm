@@ -200,6 +200,22 @@ void TestCaScript::runtimeErrorIsReportedAndNextRunSucceeds()
     QVERIFY(succeeded.first().toBool());
 }
 
+void TestCaScript::thrownStringIsReportedAsFailure()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral("throw 'Fehler';"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> arguments = finished.first();
+    QCOMPARE(arguments.size(), 1);
+    QCOMPARE(arguments.first().userType(), int(QMetaType::Bool));
+    QVERIFY(!arguments.first().toBool());
+}
+
 void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
 {
     QTemporaryDir directory;

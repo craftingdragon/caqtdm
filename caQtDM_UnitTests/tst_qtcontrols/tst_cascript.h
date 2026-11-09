@@ -44,6 +44,7 @@ private slots:
     void scriptAndInputsSurviveUiFileRoundTrip();
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();
+    void thrownStringIsReportedAsFailure();
 };
 
 #endif // TST_CASCRIPT_H
