@@ -29,7 +29,9 @@
 #include <cainclude.h>
 #include <canumeric.h>
 #include <caspinbox.h>
+#include <cascript.h>
 #include <gensoftpv.h>
+#include <QSignalSpy>
 
 #include <cfloat>
 #include <climits>
@@ -242,6 +244,31 @@ void TestCaQtDM_Lib::cleanup()
     delete m_internalPlugin;
     delete m_mutexKnobData;
     delete m_fakeFileOpenWindow;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredScalarThroughAlias()
+{
+    genSoftPV source(m_fakeFileOpenWindow);
+    source.setVariable(QStringLiteral("scriptScalarInput"));
+    source.setDataType(genSoftPV::Double);
+    source.setValue(QStringLiteral("2.5"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_fakeFileOpenWindow);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptScalarInput"), QStringLiteral("factor")}
+    });
+    script.setScript(QStringLiteral(
+        "if (inputs.factor.value !== 2.5) throw new Error('Incorrect input value');"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
 }
 
 void TestCaQtDM_Lib::checkJsonStringWorks()
