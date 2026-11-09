@@ -26,6 +26,8 @@
 #ifndef CASCRIPT_H
 #define CASCRIPT_H
 
+#include <QList>
+#include <QStringList>
 #include <QWidget>
 #include <qtcontrols_global.h>
 
@@ -36,10 +38,18 @@ class QTCON_EXPORT caScript : public QWidget
     Q_PROPERTY(QString script READ getScript WRITE setScript)
 
 public:
+    struct InputChannel
+    {
+        QString channel;
+        QString alias;
+    };
+
     explicit caScript(QWidget *parent = nullptr);
 
     QString getScript() const;
     void setScript(const QString &script);
+
+    static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
 private:
     QString m_script;

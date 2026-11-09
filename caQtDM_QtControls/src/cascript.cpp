@@ -25,6 +25,8 @@
 
 #include "cascript.h"
 
+#include <QSet>
+
 caScript::caScript(QWidget *parent) : QWidget(parent)
 {}
 
@@ -36,4 +38,21 @@ QString caScript::getScript() const
 void caScript::setScript(const QString &script)
 {
     m_script = script;
+}
+
+QStringList caScript::validateInputChannels(const QList<InputChannel> &inputs)
+{
+    QStringList errors;
+    QSet<QString> keys;
+
+    for (const InputChannel &input : inputs) {
+        const QString key = input.alias.isEmpty() ? input.channel : input.alias;
+        if (keys.contains(key)) {
+            errors.append(tr("Duplicate input key \"%1\".").arg(key));
+        } else {
+            keys.insert(key);
+        }
+    }
+
+    return errors;
 }
