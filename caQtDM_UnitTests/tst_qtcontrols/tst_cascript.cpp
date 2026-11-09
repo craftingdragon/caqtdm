@@ -87,3 +87,23 @@ void TestCaScript::emptyInputChannelWithAliasIsRejected()
     QCOMPARE(errors.size(), 1);
     QVERIFY(errors.first().contains(QStringLiteral("score")));
 }
+
+void TestCaScript::inputConfigurationErrorsReflectCurrentInputs()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("score")}
+    });
+
+    const QStringList errors = widget.inputConfigurationErrors();
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+
+    widget.setInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+
+    QVERIFY(widget.inputConfigurationErrors().isEmpty());
+}

@@ -38,6 +38,7 @@ private slots:
     void distinctInputAliasesAreAccepted();
     void inputAliasCollidingWithChannelNameIsRejected();
     void emptyInputChannelWithAliasIsRejected();
+    void inputConfigurationErrorsReflectCurrentInputs();
 };
 
 #endif // TST_CASCRIPT_H
