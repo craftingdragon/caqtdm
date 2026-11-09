@@ -77,3 +77,13 @@ void TestCaScript::inputAliasCollidingWithChannelNameIsRejected()
     QCOMPARE(errors.size(), 1);
     QVERIFY(errors.first().contains(QStringLiteral("internal://scriptFactor")));
 }
+
+void TestCaScript::emptyInputChannelWithAliasIsRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QString(), QStringLiteral("score")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+}
