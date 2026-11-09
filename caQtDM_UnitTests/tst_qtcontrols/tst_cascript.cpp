@@ -45,3 +45,24 @@ void TestCaScript::scriptPropertyIsInitiallyEmptyAndWritable()
     QVERIFY(property.write(&widget, script));
     QCOMPARE(property.read(&widget).toString(), script);
 }
+
+void TestCaScript::duplicateInputAliasesAreRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("score")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+}
+
+void TestCaScript::distinctInputAliasesAreAccepted()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+
+    QVERIFY(errors.isEmpty());
+}

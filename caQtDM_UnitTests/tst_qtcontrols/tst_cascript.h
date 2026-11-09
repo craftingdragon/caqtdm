@@ -34,6 +34,8 @@ class TestCaScript : public QObject
 
 private slots:
     void scriptPropertyIsInitiallyEmptyAndWritable();
+    void duplicateInputAliasesAreRejected();
+    void distinctInputAliasesAreAccepted();
 };
 
 #endif // TST_CASCRIPT_H
