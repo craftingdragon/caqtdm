@@ -59,9 +59,10 @@ public slots:
             if (!m_engine) m_engine = new QJSEngine(this);
         }
         const QJSValue result = m_engine->evaluate(
-            QStringLiteral("(function() {\n") + script + QStringLiteral("\n})()"),
+            QStringLiteral("(function() { try { (function() {\n") + script
+                + QStringLiteral("\n})(); return true; } catch (error) { return false; } })()"),
             QStringLiteral("caScript"), 0);
-        emit finished(!result.isError());
+        emit finished(result.isBool() && result.toBool());
     }
 
 signals:
