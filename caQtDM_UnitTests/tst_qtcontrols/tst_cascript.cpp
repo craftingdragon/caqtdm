@@ -175,6 +175,31 @@ void TestCaScript::simpleScriptCompletesAsynchronously()
     QVERIFY(arguments.first().toBool());
 }
 
+void TestCaScript::runtimeErrorIsReportedAndNextRunSucceeds()
+{
+    caScript widget;
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.setScript(QStringLiteral("throw new Error('Test failure');"));
+
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> failed = finished.takeFirst();
+    QCOMPARE(failed.size(), 1);
+    QCOMPARE(failed.first().userType(), int(QMetaType::Bool));
+    QVERIFY(!failed.first().toBool());
+
+    widget.setScript(QStringLiteral("const answer = 6 * 7;"));
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> succeeded = finished.first();
+    QCOMPARE(succeeded.size(), 1);
+    QCOMPARE(succeeded.first().userType(), int(QMetaType::Bool));
+    QVERIFY(succeeded.first().toBool());
+}
+
 void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
 {
     QTemporaryDir directory;

@@ -43,6 +43,7 @@ private slots:
     void invalidInputJsonPreservesInputsAndCanBeCorrected();
     void scriptAndInputsSurviveUiFileRoundTrip();
     void simpleScriptCompletesAsynchronously();
+    void runtimeErrorIsReportedAndNextRunSucceeds();
 };
 
 #endif // TST_CASCRIPT_H
