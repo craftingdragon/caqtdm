@@ -27,8 +27,29 @@
 #include "cascript.h"
 
 #include <QJsonDocument>
+#include <QFile>
+#include <QFormBuilder>
 #include <QMetaProperty>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QVBoxLayout>
+#include <memory>
+
+namespace {
+class ScriptFormBuilder : public QFormBuilder
+{
+protected:
+    QWidget *createWidget(const QString &widgetName, QWidget *parent, const QString &name) override
+    {
+        if (widgetName == QStringLiteral("caScript")) {
+            caScript *widget = new caScript(parent);
+            widget->setObjectName(name);
+            return widget;
+        }
+        return QFormBuilder::createWidget(widgetName, parent, name);
+    }
+};
+}
 
 void TestCaScript::scriptPropertyIsInitiallyEmptyAndWritable()
 {
@@ -132,6 +153,49 @@ void TestCaScript::invalidInputJsonPreservesInputsAndCanBeCorrected()
     QCOMPARE(correctedInputs.size(), 1);
     QCOMPARE(correctedInputs.first().channel, QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"));
     QCOMPARE(correctedInputs.first().alias, QStringLiteral("score"));
+}
+
+void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QFile file(directory.filePath(QStringLiteral("cascript.ui")));
+
+    QWidget panel;
+    panel.setObjectName(QStringLiteral("panel"));
+    QVBoxLayout *layout = new QVBoxLayout(&panel);
+    caScript *scriptWidget = new caScript(&panel);
+    scriptWidget->setObjectName(QStringLiteral("scriptWidget"));
+    layout->addWidget(scriptWidget);
+    const QString script = QStringLiteral("// Grüezi <>&\noutputs.result.value = inputs.score.value;\n");
+    scriptWidget->setScript(script);
+    const QList<caScript::InputChannel> inputs = {
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QString()}
+    };
+    scriptWidget->setInputChannels(inputs);
+
+    ScriptFormBuilder builder;
+    builder.clearPluginPaths();
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    builder.save(&file, &panel);
+    QVERIFY(file.flush());
+    QVERIFY(file.size() > 0);
+    file.close();
+
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    std::unique_ptr<QWidget> restoredPanel(builder.load(&file));
+    QVERIFY(restoredPanel != nullptr);
+    caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
+    QVERIFY(restored != nullptr);
+    QCOMPARE(restored->getScript(), script);
+    const QList<caScript::InputChannel> restoredInputs = restored->getInputChannels();
+    QCOMPARE(restoredInputs.size(), inputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+        QCOMPARE(restoredInputs.at(i).channel, inputs.at(i).channel);
+        QCOMPARE(restoredInputs.at(i).alias, inputs.at(i).alias);
+    }
+    QVERIFY(restored->inputConfigurationErrors().isEmpty());
 }
 
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
