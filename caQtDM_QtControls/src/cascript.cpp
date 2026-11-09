@@ -25,6 +25,10 @@
 
 #include "cascript.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QSet>
 
 caScript::caScript(QWidget *parent) : QWidget(parent)
@@ -40,14 +44,66 @@ void caScript::setScript(const QString &script)
     m_script = script;
 }
 
+QString caScript::getChannels() const
+{
+    QJsonArray channels;
+    for (const InputChannel &input : m_inputChannels) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("channel"), input.channel);
+        entry.insert(QStringLiteral("alias"), input.alias);
+        channels.append(entry);
+    }
+    return QString::fromUtf8(QJsonDocument(channels).toJson(QJsonDocument::Compact));
+}
+
+void caScript::setChannels(const QString &json)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError) {
+        m_inputJsonError = tr("Invalid input channel JSON: %1").arg(error.errorString());
+        return;
+    }
+    if (!document.isArray()) {
+        m_inputJsonError = tr("Input channel JSON must be an array.");
+        return;
+    }
+
+    QList<InputChannel> inputs;
+    const QJsonArray entries = document.array();
+    for (int i = 0; i < entries.size(); ++i) {
+        const QJsonValue entry = entries.at(i);
+        const QJsonObject object = entry.toObject();
+        const QJsonValue channel = object.value(QStringLiteral("channel"));
+        const QJsonValue alias = object.value(QStringLiteral("alias"));
+        if (!entry.isObject() || !channel.isString()
+            || (!alias.isUndefined() && !alias.isString())) {
+            m_inputJsonError = tr("Input entry %1 requires a channel string and an optional alias string.").arg(i + 1);
+            return;
+        }
+        inputs.append({channel.toString(), alias.toString()});
+    }
+    setInputChannels(inputs);
+}
+
+QList<caScript::InputChannel> caScript::getInputChannels() const
+{
+    return m_inputChannels;
+}
+
 void caScript::setInputChannels(const QList<InputChannel> &inputs)
 {
     m_inputChannels = inputs;
+    m_inputJsonError.clear();
 }
 
 QStringList caScript::inputConfigurationErrors() const
 {
-    return validateInputChannels(m_inputChannels);
+    QStringList errors = validateInputChannels(m_inputChannels);
+    if (!m_inputJsonError.isEmpty()) {
+        errors.prepend(m_inputJsonError);
+    }
+    return errors;
 }
 
 QStringList caScript::validateInputChannels(const QList<InputChannel> &inputs)

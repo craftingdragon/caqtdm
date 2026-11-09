@@ -36,6 +36,7 @@ class QTCON_EXPORT caScript : public QWidget
     Q_OBJECT
 
     Q_PROPERTY(QString script READ getScript WRITE setScript)
+    Q_PROPERTY(QString channels READ getChannels WRITE setChannels)
 
 public:
     struct InputChannel
@@ -49,6 +50,9 @@ public:
     QString getScript() const;
     void setScript(const QString &script);
 
+    QString getChannels() const;
+    void setChannels(const QString &json);
+    QList<InputChannel> getInputChannels() const;
     void setInputChannels(const QList<InputChannel> &inputs);
     QStringList inputConfigurationErrors() const;
 
@@ -57,6 +61,7 @@ public:
 private:
     QString m_script;
     QList<InputChannel> m_inputChannels;
+    QString m_inputJsonError;
 };
 
 #endif // CASCRIPT_H
