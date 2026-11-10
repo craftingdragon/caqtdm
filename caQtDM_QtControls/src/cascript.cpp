@@ -60,6 +60,8 @@ public slots:
         }
         QJSValue scriptInputs = m_engine->toScriptValue(inputs);
         QJSValue byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
+        QJSValue decodedTextFunction = m_engine->evaluate(QStringLiteral(
+            "(function(text) { return function() { return text; }; })"));
         for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
             const QVariantMap channel = it.value().toMap();
             if (!channel.contains(QStringLiteral("rawBytes"))) continue;
@@ -70,6 +72,9 @@ public slots:
             }
             QJSValue scriptChannel = scriptInputs.property(it.key());
             scriptChannel.setProperty(QStringLiteral("rawBytes"), byteArrayConstructor.callAsConstructor({array}));
+            // Decode the original snapshot in C++, independently of the displayed value.
+            scriptChannel.setProperty(QStringLiteral("fromLatin1"),
+                                      decodedTextFunction.call({QJSValue(QString::fromLatin1(bytes))}));
         }
         m_engine->globalObject().setProperty(QStringLiteral("inputs"), scriptInputs);
         const QJSValue result = m_engine->evaluate(
