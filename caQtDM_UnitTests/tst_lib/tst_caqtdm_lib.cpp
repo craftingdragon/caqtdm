@@ -307,6 +307,41 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredShortThroughAlias()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias_data()
+{
+    QTest::addColumn<QString>("value");
+    QTest::newRow("umlaut") << QStringLiteral("Grüezi");
+    QTest::newRow("empty") << QString();
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
+{
+    QFETCH(QString, value);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptStringInput"));
+    source.setDataType(genSoftPV::String);
+    source.setValue(value);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptStringInput"), QStringLiteral("text")}
+    });
+    script.setScript(value.isEmpty()
+        ? QStringLiteral("if (inputs.text.value !== '') throw new Error('Missing empty string');")
+        : QStringLiteral("if (inputs.text.value !== 'Grüezi') throw new Error('Incorrect string');"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaQtDM_Lib::checkJsonStringWorks()
 {
     QString emptyJson = "{}";

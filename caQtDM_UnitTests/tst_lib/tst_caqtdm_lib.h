@@ -61,6 +61,8 @@ private slots:
     void scriptReceivesMonitoredScalarThroughAlias();
     void scriptReceivesMonitoredShortThroughAlias_data();
     void scriptReceivesMonitoredShortThroughAlias();
+    void scriptReceivesMonitoredStringThroughAlias_data();
+    void scriptReceivesMonitoredStringThroughAlias();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
