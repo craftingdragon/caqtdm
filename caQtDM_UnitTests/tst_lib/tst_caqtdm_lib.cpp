@@ -271,6 +271,42 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredScalarThroughAlias()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaQtDM_Lib::scriptReceivesMonitoredShortThroughAlias_data()
+{
+    QTest::addColumn<int>("value");
+    QTest::newRow("zero") << 0;
+    QTest::newRow("positive") << 42;
+    QTest::newRow("negative") << -42;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredShortThroughAlias()
+{
+    QFETCH(int, value);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptShortInput"));
+    source.setDataType(genSoftPV::Int);
+    source.setValue(QString::number(value));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptShortInput"), QStringLiteral("number")}
+    });
+    script.setScript(QStringLiteral(
+        "if (inputs.number.value !== %1) throw new Error('Incorrect short input value');")
+        .arg(value));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaQtDM_Lib::checkJsonStringWorks()
 {
     QString emptyJson = "{}";

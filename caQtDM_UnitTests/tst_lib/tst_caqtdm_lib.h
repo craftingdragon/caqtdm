@@ -59,6 +59,8 @@ private slots:
     void computeNumericMaxMinPrecHonoursMaxChannelPrecision();
     void computeNumericMaxMinPrecUpdatesWhenChannelChanges();
     void scriptReceivesMonitoredScalarThroughAlias();
+    void scriptReceivesMonitoredShortThroughAlias_data();
+    void scriptReceivesMonitoredShortThroughAlias();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
