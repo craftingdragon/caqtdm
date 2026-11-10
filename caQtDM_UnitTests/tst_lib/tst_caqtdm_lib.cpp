@@ -342,6 +342,37 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaQtDM_Lib::scriptReceivesOriginalStringBytes()
+{
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptRawStringInput"));
+    source.setDataType(genSoftPV::String);
+    source.setValue(QStringLiteral("Grüezi"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptRawStringInput"), QStringLiteral("text")}
+    });
+    script.setScript(QStringLiteral(
+        "const bytes = inputs.text.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing raw bytes');\n"
+        "const expected = [0x47, 0x72, 0xfc, 0x65, 0x7a, 0x69];\n"
+        "if (bytes.length !== expected.length) throw new Error('Incorrect byte count');\n"
+        "for (let i = 0; i < expected.length; ++i) {\n"
+        "    if (bytes[i] !== expected[i]) throw new Error('Changed original byte');\n"
+        "}"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaQtDM_Lib::checkJsonStringWorks()
 {
     QString emptyJson = "{}";
