@@ -56,6 +56,7 @@ private slots:
     void explicitScalarConversions_data();
     void explicitScalarConversions();
     void conversionsPreserveInputSnapshot();
+    void waveformSnapshotUsesJavaScriptArray();
 };
 
 #endif // TST_CASCRIPT_H

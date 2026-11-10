@@ -49,6 +49,7 @@
 #endif
 
 #include <QObject>
+#include <QMutexLocker>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -6665,7 +6666,28 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
-        if (data.edata.connected && data.edata.valueCount <= 1) {
+        if (data.edata.connected && data.edata.fieldtype == caDOUBLE
+            && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            QVariantList values;
+            bool valid = false;
+            {
+                QMutexLocker lock(static_cast<QMutex *>(data.mutex));
+                const int count = data.edata.valueCount;
+                if (count >= 0 && (count == 0 || (data.edata.dataB
+                    && count <= data.edata.dataSize / int(sizeof(double))))) {
+                    const double *buffer = static_cast<const double *>(data.edata.dataB);
+                    values.reserve(count);
+                    for (int i = 0; i < count; ++i) values.append(buffer[i]);
+                    valid = true;
+                }
+            }
+            if (valid) {
+                scriptWidget->updateInputMetadata(data.specData[0],
+                    {{QStringLiteral("fieldtype"), int(caScript::Double)}});
+                scriptWidget->updateInputValue(data.specData[0], values);
+            }
+        } else if (data.edata.connected && data.edata.valueCount <= 1
+                   && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
             QVariantMap metadata;
             switch (data.edata.fieldtype) {
             case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;

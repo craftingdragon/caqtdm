@@ -392,6 +392,58 @@ void TestCaQtDM_Lib::scriptPublishesScaledInput()
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 900.0);
 }
 
+void TestCaQtDM_Lib::scriptReceivesDoubleWaveform_data()
+{
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("used-length") << 3 << QStringLiteral("[-2,0,3.75]");
+    QTest::newRow("one-element") << 1 << QStringLiteral("[-2]");
+    QTest::newRow("empty") << 0 << QStringLiteral("[]");
+}
+
+void TestCaQtDM_Lib::scriptReceivesDoubleWaveform()
+{
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptDoubleWaveform"));
+    source.setDataType(genSoftPV::Double);
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(QStringLiteral("-2;0;3.75;99;100"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptDoubleWaveform"), QStringLiteral("samples")}});
+    script.setScript(QStringLiteral(
+        "const values = inputs.samples.value;\n"
+        "if (!Array.isArray(values)) throw new Error('Expected an array');\n"
+        "if (inputs.samples.fieldtype !== EpicsType.Double) throw new Error('Incorrect type');\n"
+        "if (JSON.stringify(values) !== JSON.stringify(%1)) throw new Error('Incorrect values or length');\n"
+        "if (values.length) values[0] = 999;").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptDoubleWaveform"));
+    QVERIFY(input);
+    QCOMPARE(input->edata.nelm, 5);
+    QCOMPARE(input->edata.valueCount, used);
+    QCOMPARE(input->edata.dimCount, 0);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
 {
     QTest::addColumn<int>("sourceType");

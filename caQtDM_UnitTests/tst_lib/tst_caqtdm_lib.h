@@ -73,6 +73,8 @@ private slots:
     void scriptSkipsInvalidOutputs_data();
     void scriptSkipsInvalidOutputs();
     void scriptPublishesScaledInput();
+    void scriptReceivesDoubleWaveform_data();
+    void scriptReceivesDoubleWaveform();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;

@@ -131,6 +131,14 @@ public slots:
             const QVariantMap channel = it.value().toMap();
             QJSValue scriptChannel = scriptInputs.property(it.key());
             if (channel.contains(QStringLiteral("value"))) {
+                if (channel.value(QStringLiteral("value")).userType() == QMetaType::QVariantList) {
+                    const QVariantList elements = channel.value(QStringLiteral("value")).toList();
+                    QJSValue array = m_engine->newArray(elements.size());
+                    for (int i = 0; i < elements.size(); ++i) {
+                        array.setProperty(i, m_engine->toScriptValue(elements.at(i)));
+                    }
+                    scriptChannel.setProperty(QStringLiteral("value"), array);
+                }
                 // Convert the snapshot in C++; expose only the captured results to JavaScript.
                 QVariantMap conversions;
                 for (int i = 0; i < typeEnum.keyCount(); ++i) {

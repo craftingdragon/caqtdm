@@ -503,6 +503,21 @@ void TestCaScript::conversionsPreserveInputSnapshot()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaScript::waveformSnapshotUsesJavaScriptArray()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://samples"), QStringLiteral("samples")}});
+    widget.updateInputValue(0, QVariantList{-2, 0, 3.75});
+    widget.setScript(QStringLiteral(
+        "const values = inputs.samples.value;\n"
+        "if (!Array.isArray(values) || values.length !== 3 || values[2] !== 3.75)\n"
+        "    throw new Error('Incorrect JavaScript array');"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 {
     const QList<caScript::InputChannel> inputs = {
