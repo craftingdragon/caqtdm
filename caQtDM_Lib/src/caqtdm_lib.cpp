@@ -6663,6 +6663,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
             } else if (data.edata.fieldtype == caINT) {
                 scriptWidget->updateInputValue(data.specData[0], static_cast<int>(data.edata.ivalue));
+            } else if (data.edata.fieldtype == caLONG) {
+                scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));
             } else if (data.edata.fieldtype == caSTRING) {
                 QMutex *dataMutex = static_cast<QMutex *>(data.mutex);
                 dataMutex->lock();
