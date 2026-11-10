@@ -61,6 +61,8 @@ private slots:
     void scriptReceivesMonitoredScalarThroughAlias();
     void scriptReceivesMonitoredShortThroughAlias_data();
     void scriptReceivesMonitoredShortThroughAlias();
+    void scriptReceivesMonitoredLongThroughAlias_data();
+    void scriptReceivesMonitoredLongThroughAlias();
     void scriptReceivesMonitoredStringThroughAlias_data();
     void scriptReceivesMonitoredStringThroughAlias();
     void scriptReceivesOriginalStringBytes();
