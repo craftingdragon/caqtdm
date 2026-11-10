@@ -27,6 +27,7 @@
 #define CASCRIPT_H
 
 #include <QList>
+#include <QByteArray>
 #include <QMap>
 #include <QStringList>
 #include <QWidget>
@@ -66,6 +67,7 @@ public:
 public slots:
     void executeScript();
     void updateInputValue(int index, const QVariant &value);
+    void updateInputRawBytes(int index, const QByteArray &bytes);
 
 signals:
     void scriptFinished(bool success);
@@ -74,6 +76,7 @@ private:
     QString m_script;
     QList<InputChannel> m_inputChannels;
     QMap<int, QVariant> m_inputValues;
+    QMap<int, QByteArray> m_inputRawBytes;
     QString m_inputJsonError;
     QThread *m_executionThread = nullptr;
     CaScriptWorker *m_worker = nullptr;

@@ -58,7 +58,20 @@ public slots:
             if (m_stopping) return;
             if (!m_engine) m_engine = new QJSEngine(this);
         }
-        m_engine->globalObject().setProperty(QStringLiteral("inputs"), m_engine->toScriptValue(inputs));
+        QJSValue scriptInputs = m_engine->toScriptValue(inputs);
+        QJSValue byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
+        for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
+            const QVariantMap channel = it.value().toMap();
+            if (!channel.contains(QStringLiteral("rawBytes"))) continue;
+            const QByteArray bytes = channel.value(QStringLiteral("rawBytes")).toByteArray();
+            QJSValue array = m_engine->newArray(bytes.size());
+            for (int i = 0; i < bytes.size(); ++i) {
+                array.setProperty(i, static_cast<unsigned char>(bytes.at(i)));
+            }
+            QJSValue scriptChannel = scriptInputs.property(it.key());
+            scriptChannel.setProperty(QStringLiteral("rawBytes"), byteArrayConstructor.callAsConstructor({array}));
+        }
+        m_engine->globalObject().setProperty(QStringLiteral("inputs"), scriptInputs);
         const QJSValue result = m_engine->evaluate(
             QStringLiteral("(function() { try { (function() {\n") + script
                 + QStringLiteral("\n})(); return true; } catch (error) { return false; } })()"),
@@ -117,6 +130,9 @@ void caScript::executeScript()
         if (m_inputValues.contains(i)) {
             channel.insert(QStringLiteral("value"), m_inputValues.value(i));
         }
+        if (m_inputRawBytes.contains(i)) {
+            channel.insert(QStringLiteral("rawBytes"), m_inputRawBytes.value(i));
+        }
         snapshot.insert(input.alias.isEmpty() ? input.channel : input.alias, channel);
     }
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
@@ -127,6 +143,13 @@ void caScript::updateInputValue(int index, const QVariant &value)
 {
     if (index >= 0 && index < m_inputChannels.size()) {
         m_inputValues.insert(index, value);
+    }
+}
+
+void caScript::updateInputRawBytes(int index, const QByteArray &bytes)
+{
+    if (index >= 0 && index < m_inputChannels.size()) {
+        m_inputRawBytes.insert(index, bytes);
     }
 }
 
@@ -191,6 +214,7 @@ void caScript::setInputChannels(const QList<InputChannel> &inputs)
 {
     m_inputChannels = inputs;
     m_inputValues.clear();
+    m_inputRawBytes.clear();
     m_inputJsonError.clear();
 }
 

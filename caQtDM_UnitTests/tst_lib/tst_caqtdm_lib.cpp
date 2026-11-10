@@ -317,6 +317,7 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias_data()
 void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
 {
     QFETCH(QString, value);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
 
     genSoftPV source(m_parentAS);
     source.setVariable(QStringLiteral("scriptStringInput"));
@@ -330,9 +331,16 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
     });
     script.setScript(value.isEmpty()
         ? QStringLiteral("if (inputs.text.value !== '') throw new Error('Missing empty string');")
-        : QStringLiteral("if (inputs.text.value !== 'Grüezi') throw new Error('Incorrect string');"));
+        : QStringLiteral("if (inputs.text.value !== 'Gr\\uFFFDezi') throw new Error('Incorrect string');"));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
     QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
 
     QSignalSpy finished(&script, &caScript::scriptFinished);
     QVERIFY(finished.isValid());
@@ -344,6 +352,7 @@ void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
 
 void TestCaQtDM_Lib::scriptReceivesOriginalStringBytes()
 {
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
     genSoftPV source(m_parentAS);
     source.setVariable(QStringLiteral("scriptRawStringInput"));
     source.setDataType(genSoftPV::String);
@@ -363,7 +372,14 @@ void TestCaQtDM_Lib::scriptReceivesOriginalStringBytes()
         "    if (bytes[i] !== expected[i]) throw new Error('Changed original byte');\n"
         "}"));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
     QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
 
     QSignalSpy finished(&script, &caScript::scriptFinished);
     QVERIFY(finished.isValid());
