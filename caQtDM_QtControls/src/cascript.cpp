@@ -75,6 +75,8 @@ public slots:
             // Decode the original snapshot in C++, independently of the displayed value.
             scriptChannel.setProperty(QStringLiteral("fromLatin1"),
                                       decodedTextFunction.call({QJSValue(QString::fromLatin1(bytes))}));
+            scriptChannel.setProperty(QStringLiteral("fromUtf8"),
+                                      decodedTextFunction.call({QJSValue(QString::fromUtf8(bytes))}));
         }
         m_engine->globalObject().setProperty(QStringLiteral("inputs"), scriptInputs);
         const QJSValue result = m_engine->evaluate(
