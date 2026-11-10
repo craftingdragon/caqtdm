@@ -46,6 +46,7 @@ private slots:
     void runtimeErrorIsReportedAndNextRunSucceeds();
     void thrownStringIsReportedAsFailure();
     void scriptExecutionKeepsGuiEventLoopResponsive();
+    void latin1DecodingPreservesInputSnapshot();
 };
 
 #endif // TST_CASCRIPT_H

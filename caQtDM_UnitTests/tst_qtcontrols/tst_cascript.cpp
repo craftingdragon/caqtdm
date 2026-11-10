@@ -291,6 +291,32 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     QVERIFY(restored->inputConfigurationErrors().isEmpty());
 }
 
+void TestCaScript::latin1DecodingPreservesInputSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("internal://text"), QStringLiteral("text")}
+    });
+    widget.updateInputValue(0, QStringLiteral("Gr\uFFFDezi"));
+    widget.updateInputRawBytes(0, QByteArray::fromHex("4772fc657a69"));
+    widget.setScript(QStringLiteral(
+        "const text = inputs.text;\n"
+        "const before = Array.from(text.rawBytes);\n"
+        "if (text.fromLatin1() !== 'Grüezi') throw new Error('Incorrect Latin-1 decoding');\n"
+        "if (text.value !== 'Gr\\uFFFDezi') throw new Error('Changed standard value');\n"
+        "if (text.rawBytes.length !== before.length) throw new Error('Changed byte count');\n"
+        "for (let i = 0; i < before.length; ++i) {\n"
+        "    if (text.rawBytes[i] !== before[i]) throw new Error('Changed raw byte');\n"
+        "}"));
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 {
     const QList<caScript::InputChannel> inputs = {
