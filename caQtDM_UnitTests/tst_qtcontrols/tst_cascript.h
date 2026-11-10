@@ -49,6 +49,10 @@ private slots:
     void latin1DecodingPreservesInputSnapshot();
     void utf8DecodingPreservesInputSnapshot();
     void inputReconfigurationClearsSnapshot();
+    void outputsAreResetBetweenRuns();
+    void failedScriptDiscardsOutputs_data();
+    void failedScriptDiscardsOutputs();
+    void invalidOutputJsonPreservesConfiguration();
 };
 
 #endif // TST_CASCRIPT_H

@@ -52,7 +52,7 @@ public:
     }
 
 public slots:
-    void execute(const QString &script, const QVariantMap &inputs)
+    void execute(const QString &script, const QVariantMap &inputs, const QVariantMap &outputs)
     {
         {
             QMutexLocker lock(&m_mutex);
@@ -86,15 +86,26 @@ public slots:
                                       decodedTextFunction.call({QJSValue(QString::fromUtf8(bytes))}));
         }
         m_engine->globalObject().setProperty(QStringLiteral("inputs"), scriptInputs);
+        m_engine->globalObject().setProperty(QStringLiteral("outputs"), m_engine->toScriptValue(outputs));
+        const QString keys = QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(outputs.keys()))
+                                                   .toJson(QJsonDocument::Compact));
         const QJSValue result = m_engine->evaluate(
             QStringLiteral("(function() { try { (function() {\n") + script
-                + QStringLiteral("\n})(); return true; } catch (error) { return false; } })()"),
+                + QStringLiteral("\n})(); const values = Object.create(null);\n"
+                                 "for (const key of ") + keys + QStringLiteral(
+                    ") { const channel = outputs[key];\n"
+                    "if (channel && Object.prototype.hasOwnProperty.call(channel, 'value'))\n"
+                    "values[key] = channel.value; }\n"
+                    "return {success: true, values: values};\n"
+                    "} catch (error) { return {success: false}; } })()"),
             QStringLiteral("caScript"), 0);
-        emit finished(result.isBool() && result.toBool());
+        const bool success = !result.isError() && result.property(QStringLiteral("success")).toBool();
+        emit finished(success, success ? result.property(QStringLiteral("values")).toVariant().toMap()
+                                       : QVariantMap());
     }
 
 signals:
-    void finished(bool success);
+    void finished(bool success, const QVariantMap &values);
 
 private:
     QMutex m_mutex;
@@ -118,7 +129,7 @@ void caScript::executeScript()
 {
     if (m_running) return;
     m_running = true;
-    if (!inputConfigurationErrors().isEmpty()) {
+    if (!inputConfigurationErrors().isEmpty() || !outputConfigurationErrors().isEmpty()) {
         QTimer::singleShot(0, this, [this]() {
             m_running = false;
             emit scriptFinished(false);
@@ -131,8 +142,9 @@ void caScript::executeScript()
         m_worker = new CaScriptWorker;
         m_worker->moveToThread(m_executionThread);
         connect(m_executionThread, &QThread::finished, m_worker, &QObject::deleteLater);
-        connect(m_worker, &CaScriptWorker::finished, this, [this](bool success) {
+        connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values) {
             m_running = false;
+            if (success && !values.isEmpty()) emit outputValuesReady(values);
             emit scriptFinished(success);
         });
         m_executionThread->start();
@@ -149,8 +161,13 @@ void caScript::executeScript()
         }
         snapshot.insert(input.alias.isEmpty() ? input.channel : input.alias, channel);
     }
+    QVariantMap outputs;
+    for (const InputChannel &output : m_outputChannels) {
+        outputs.insert(output.alias.isEmpty() ? output.channel : output.alias, QVariantMap());
+    }
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
-                              Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot));
+                              Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot),
+                              Q_ARG(QVariantMap, outputs));
 }
 
 void caScript::updateInputValue(int index, const QVariant &value)
@@ -246,6 +263,59 @@ QStringList caScript::inputConfigurationErrors() const
     if (!m_inputJsonError.isEmpty()) {
         errors.prepend(m_inputJsonError);
     }
+    return errors;
+}
+
+QString caScript::getOutputChannelsJson() const
+{
+    QJsonArray channels;
+    for (const InputChannel &output : m_outputChannels) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("channel"), output.channel);
+        entry.insert(QStringLiteral("alias"), output.alias);
+        channels.append(entry);
+    }
+    return QString::fromUtf8(QJsonDocument(channels).toJson(QJsonDocument::Compact));
+}
+
+void caScript::setOutputChannelsJson(const QString &json)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isArray()) {
+        m_outputJsonError = tr("Output channels require a JSON array.");
+        return;
+    }
+    QList<InputChannel> outputs;
+    for (const QJsonValue &entry : document.array()) {
+        const QJsonObject object = entry.toObject();
+        if (!entry.isObject() || !object.value(QStringLiteral("channel")).isString()
+            || (object.contains(QStringLiteral("alias")) && !object.value(QStringLiteral("alias")).isString())) {
+            m_outputJsonError = tr("Output entries require a channel string and an optional alias string.");
+            return;
+        }
+        outputs.append({object.value(QStringLiteral("channel")).toString(),
+                        object.value(QStringLiteral("alias")).toString()});
+    }
+    setOutputChannels(outputs);
+}
+
+QList<caScript::InputChannel> caScript::getOutputChannels() const
+{
+    return m_outputChannels;
+}
+
+void caScript::setOutputChannels(const QList<InputChannel> &outputs)
+{
+    m_outputChannels = outputs;
+    m_outputJsonError.clear();
+}
+
+QStringList caScript::outputConfigurationErrors() const
+{
+    QStringList errors = validateInputChannels(m_outputChannels);
+    for (QString &error : errors) error.prepend(tr("Output: "));
+    if (!m_outputJsonError.isEmpty()) errors.prepend(m_outputJsonError);
     return errors;
 }
 

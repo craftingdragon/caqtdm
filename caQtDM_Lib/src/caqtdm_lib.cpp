@@ -29,6 +29,7 @@
 
 #include "caQtDM_Lib_global.h"
 #include <stdint.h>
+#include <limits>
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
@@ -3585,7 +3586,8 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
     } else if(caScript* scriptWidget = qobject_cast<caScript *>(w1)) {
         scriptWidget->setProperty("ObjectType", caScript_Widget);
         scriptWidget->setProperty("Taken", true);
-        const QStringList errors = scriptWidget->inputConfigurationErrors();
+        const QStringList errors = scriptWidget->inputConfigurationErrors()
+                                   + scriptWidget->outputConfigurationErrors();
         if (!errors.isEmpty()) {
             integerList.append(0);
             scriptWidget->setProperty("MonitorList", integerList);
@@ -3607,6 +3609,11 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         }
         integerList.insert(0, nbMonitors);
         scriptWidget->setProperty("MonitorList", integerList);
+
+        QList<caScript::InputChannel> outputs = scriptWidget->getOutputChannels();
+        for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
+        scriptWidget->setOutputChannels(outputs);
+        connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
 
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
 
@@ -7367,6 +7374,111 @@ void CaQtDM_Lib::Callback_TextEntryChanged(const QString& text)
 /**
  * caAlarmTree asks for a write ($SEVRPV, $ACKPV, $HEARTBEATPV, $FORCEPV, config pv); all of them are monitored by the tree
  */
+void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
+{
+    caScript *widget = qobject_cast<caScript *>(sender());
+    if (!widget) return;
+    const auto warn = [this, widget](const QString &channel, const QString &reason) {
+        QByteArray message = tr("caScript %1: output %2 ignored: %3")
+            .arg(widget->objectName(), channel, reason).toLocal8Bit();
+        postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+    };
+    const auto targetName = [](QString channel) {
+        channel = channel.trimmed();
+        if (channel.endsWith(QStringLiteral(".VAL"))) channel.chop(4);
+        return channel;
+    };
+    QMap<QString, int> counts;
+    const auto outputs = widget->getOutputChannels();
+    for (const auto &output : outputs) ++counts[targetName(output.channel)];
+    for (const auto &output : outputs) {
+        const QString key = output.alias.isEmpty() ? output.channel : output.alias;
+        if (!values.contains(key)) continue;
+        const QString channel = targetName(output.channel);
+        if (counts.value(channel) > 1) {
+            warn(channel, tr("duplicate output target"));
+            continue;
+        }
+        if (!channel.startsWith(QStringLiteral("internal://"))) {
+            warn(channel, tr("only existing internal channels are supported"));
+            continue;
+        }
+        const QString pv = channel.mid(11);
+        knobData *existing = mutexKnobDataP->getMutexKnobDataPV(widget, pv);
+        if (!existing || QString::fromLatin1(existing->pluginName) != QStringLiteral("internal")) {
+            warn(channel, tr("target is not defined"));
+            continue;
+        }
+        knobData target = mutexKnobDataP->GetMutexKnobData(existing->index);
+        if (!target.edata.connected || !target.edata.accessW || target.edata.nelm != 1
+            || target.edata.dimCount != 0) {
+            warn(channel, tr("target must be a connected writable scalar"));
+            continue;
+        }
+        const QVariant value = values.value(key);
+        QByteArray text;
+        double realValue = 0.0;
+        int32_t integerValue = 0;
+        if (target.edata.fieldtype == caSTRING) {
+            if (!value.canConvert<QString>()) {
+                warn(channel, tr("value cannot be converted to a string"));
+                continue;
+            }
+            const QString string = value.toString();
+            text = string.toLatin1();
+            if (string.contains(QChar(0)) || QString::fromLatin1(text) != string) {
+                warn(channel, tr("value cannot be represented by the internal Latin-1 string channel"));
+                continue;
+            }
+        } else {
+            bool ok = false;
+            realValue = value.toDouble(&ok);
+            if (!ok || !qIsFinite(realValue)) {
+                warn(channel, tr("value must be a finite number"));
+                continue;
+            }
+            if (target.edata.fieldtype == caFLOAT) {
+                if (qAbs(realValue) > std::numeric_limits<float>::max()) {
+                    warn(channel, tr("value exceeds the float range"));
+                    continue;
+                }
+            } else if (target.edata.fieldtype != caDOUBLE) {
+                double minimum;
+                double maximum;
+                switch (target.edata.fieldtype) {
+                case caINT: minimum = -32768; maximum = 32767; break;
+                case caLONG: minimum = -2147483648.0; maximum = 2147483647; break;
+                case caCHAR: minimum = 0; maximum = 255; break;
+                case caENUM:
+                    minimum = 0;
+                    maximum = target.edata.enumCount > 0 ? target.edata.enumCount - 1 : 65535;
+                    break;
+                default:
+                    warn(channel, tr("unsupported target type"));
+                    continue;
+                }
+                const double rounded = round(realValue);
+                if (rounded < minimum || rounded > maximum) {
+                    warn(channel, tr("value exceeds the target range"));
+                    continue;
+                }
+                integerValue = static_cast<int32_t>(llround(realValue));
+                realValue = integerValue;
+            }
+        }
+        ControlsInterface *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+        if (!plugin) {
+            warn(channel, tr("internal plugin is unavailable"));
+            continue;
+        }
+        QByteArray object = widget->objectName().toLatin1();
+        char error[SMALL_STRING_LENGTH] = {};
+        if (!plugin->pvSetValue(&target, realValue, integerValue, text.data(), object.data(), error, 0)) {
+            warn(channel, tr("internal plugin rejected the write"));
+        }
+    }
+}
+
 void CaQtDM_Lib::Callback_AlarmTreeWrite(const QString &pv, const QString &text, bool asString)
 {
     QWidget *w = qobject_cast<QWidget *>(sender());

@@ -267,6 +267,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
         {QStringLiteral("internal://scriptFactor"), QString()}
     };
     scriptWidget->setInputChannels(inputs);
+    scriptWidget->setOutputChannels({{QStringLiteral("internal://scriptResult"), QStringLiteral("result")}});
 
     ScriptFormBuilder builder;
     builder.clearPluginPaths();
@@ -282,6 +283,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
     QVERIFY(restored != nullptr);
     QCOMPARE(restored->getScript(), script);
+    QCOMPARE(restored->getOutputChannelsJson(), scriptWidget->getOutputChannelsJson());
     const QList<caScript::InputChannel> restoredInputs = restored->getInputChannels();
     QCOMPARE(restoredInputs.size(), inputs.size());
     for (int i = 0; i < inputs.size(); ++i) {
@@ -363,6 +365,65 @@ void TestCaScript::inputReconfigurationClearsSnapshot()
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::outputsAreResetBetweenRuns()
+{
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.setScript(QStringLiteral("outputs.result.value = 42;"));
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QCOMPARE(values.count(), 1);
+    QCOMPARE(values.first().first().toMap().value(QStringLiteral("result")).toInt(), 42);
+
+    widget.setScript(QStringLiteral("if ('value' in outputs.result) throw new Error('Stale output');"));
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(values.count(), 1);
+}
+
+void TestCaScript::failedScriptDiscardsOutputs_data()
+{
+    QTest::addColumn<QString>("script");
+    QTest::newRow("error") << QStringLiteral("outputs.result.value = 42; throw new Error('Failed');");
+    QTest::newRow("primitive") << QStringLiteral("outputs.result.value = 42; throw 'Failed';");
+    QTest::newRow("syntax") << QStringLiteral("outputs.result.value = 42; const = ;");
+    QTest::newRow("getter") << QStringLiteral(
+        "Object.defineProperty(outputs.result, 'value', {get() { throw new Error('Failed'); }});");
+}
+
+void TestCaScript::failedScriptDiscardsOutputs()
+{
+    QFETCH(QString, script);
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.setScript(script);
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(values.count(), 0);
+}
+
+void TestCaScript::invalidOutputJsonPreservesConfiguration()
+{
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    const QString original = widget.getOutputChannelsJson();
+    widget.setOutputChannelsJson(QStringLiteral("[{\"channel\": 42}]"));
+    QCOMPARE(widget.getOutputChannelsJson(), original);
+    QVERIFY(!widget.outputConfigurationErrors().isEmpty());
+    widget.setOutputChannelsJson(original);
+    QVERIFY(widget.outputConfigurationErrors().isEmpty());
+    widget.setOutputChannels({{QStringLiteral("internal://one"), QStringLiteral("same")},
+                              {QStringLiteral("internal://two"), QStringLiteral("same")}});
+    QVERIFY(!widget.outputConfigurationErrors().isEmpty());
 }
 
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()

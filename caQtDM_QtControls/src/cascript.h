@@ -43,6 +43,7 @@ class QTCON_EXPORT caScript : public QWidget
 
     Q_PROPERTY(QString script READ getScript WRITE setScript)
     Q_PROPERTY(QString channels READ getChannels WRITE setChannels)
+    Q_PROPERTY(QString outputChannels READ getOutputChannelsJson WRITE setOutputChannelsJson)
 
 public:
     enum EpicsType { String = 0, Short = 1, Float = 2, Enum = 3, Char = 4, Long = 5, Double = 6 };
@@ -65,6 +66,11 @@ public:
     QList<InputChannel> getInputChannels() const;
     void setInputChannels(const QList<InputChannel> &inputs);
     QStringList inputConfigurationErrors() const;
+    QString getOutputChannelsJson() const;
+    void setOutputChannelsJson(const QString &json);
+    QList<InputChannel> getOutputChannels() const;
+    void setOutputChannels(const QList<InputChannel> &outputs);
+    QStringList outputConfigurationErrors() const;
 
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
@@ -76,14 +82,17 @@ public slots:
 
 signals:
     void scriptFinished(bool success);
+    void outputValuesReady(const QVariantMap &values);
 
 private:
     QString m_script;
     QList<InputChannel> m_inputChannels;
+    QList<InputChannel> m_outputChannels;
     QMap<int, QVariant> m_inputValues;
     QMap<int, QByteArray> m_inputRawBytes;
     QMap<int, QVariantMap> m_inputMetadata;
     QString m_inputJsonError;
+    QString m_outputJsonError;
     QThread *m_executionThread = nullptr;
     CaScriptWorker *m_worker = nullptr;
     bool m_running = false;

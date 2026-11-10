@@ -68,6 +68,11 @@ private slots:
     void scriptReceivesOriginalStringBytes();
     void scriptReceivesTypedScalar_data();
     void scriptReceivesTypedScalar();
+    void scriptWritesExistingScalar_data();
+    void scriptWritesExistingScalar();
+    void scriptSkipsInvalidOutputs_data();
+    void scriptSkipsInvalidOutputs();
+    void scriptPublishesScaledInput();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
