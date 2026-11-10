@@ -6659,9 +6659,30 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
         if (data.edata.connected && data.edata.valueCount <= 1) {
+            QVariantMap metadata;
+            switch (data.edata.fieldtype) {
+            case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
+            case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
+            case caFLOAT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Float)); break;
+            case caENUM: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Enum)); break;
+            case caCHAR: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Char)); break;
+            case caLONG: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Long)); break;
+            case caDOUBLE: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Double)); break;
+            default: break;
+            }
+            if (data.edata.fieldtype == caENUM) {
+                const QStringList labels = data.edata.enumCount > 0
+                    ? String.split(QChar(27)).mid(0, data.edata.enumCount) : QStringList();
+                metadata.insert(QStringLiteral("enumStrings"), labels);
+                if (data.edata.ivalue >= 0 && data.edata.ivalue < labels.size()) {
+                    metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
+                }
+            }
+            scriptWidget->updateInputMetadata(data.specData[0], metadata);
             if (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT) {
                 scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
-            } else if (data.edata.fieldtype == caINT) {
+            } else if (data.edata.fieldtype == caINT || data.edata.fieldtype == caCHAR
+                       || data.edata.fieldtype == caENUM) {
                 scriptWidget->updateInputValue(data.specData[0], static_cast<int>(data.edata.ivalue));
             } else if (data.edata.fieldtype == caLONG) {
                 scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));

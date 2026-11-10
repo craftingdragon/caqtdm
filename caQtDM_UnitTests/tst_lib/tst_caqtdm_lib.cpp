@@ -246,6 +246,80 @@ void TestCaQtDM_Lib::cleanup()
     delete m_fakeFileOpenWindow;
 }
 
+void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
+{
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<QString>("expectedType");
+    QTest::addColumn<QString>("expectedValue");
+    QTest::newRow("string") << int(genSoftPV::String) << QStringLiteral("ABC")
+                            << QStringLiteral("String") << QStringLiteral("'ABC'");
+    QTest::newRow("short-min") << int(genSoftPV::Int) << QStringLiteral("-32768")
+                               << QStringLiteral("Short") << QStringLiteral("-32768");
+    QTest::newRow("short-max") << int(genSoftPV::Int) << QStringLiteral("32767")
+                               << QStringLiteral("Short") << QStringLiteral("32767");
+    QTest::newRow("float") << int(genSoftPV::Float) << QStringLiteral("-3.75")
+                           << QStringLiteral("Float") << QStringLiteral("-3.75");
+    QTest::newRow("double") << int(genSoftPV::Double) << QStringLiteral("3.75")
+                            << QStringLiteral("Double") << QStringLiteral("3.75");
+    QTest::newRow("long") << int(genSoftPV::Long) << QStringLiteral("2147483647")
+                          << QStringLiteral("Long") << QStringLiteral("2147483647");
+    for (int value : {0, 1, 2}) {
+        QTest::newRow(qPrintable(QStringLiteral("enum-%1").arg(value)))
+            << int(genSoftPV::Enum) << QString::number(value)
+            << QStringLiteral("Enum") << QString::number(value);
+    }
+    for (int value : {0, 65, 255}) {
+        QTest::newRow(qPrintable(QStringLiteral("char-%1").arg(value)))
+            << int(genSoftPV::Char) << QString::number(value)
+            << QStringLiteral("Char") << QString::number(value);
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesTypedScalar()
+{
+    QFETCH(int, sourceType);
+    QFETCH(QString, value);
+    QFETCH(QString, expectedType);
+    QFETCH(QString, expectedValue);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptTypedInput"));
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
+    source.setValue(value);
+    source.setEnumStrings({QStringLiteral("OFF"), QStringLiteral("ON"), QStringLiteral("FAULT")});
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptTypedInput"), QStringLiteral("sample")}});
+    script.setScript(QStringLiteral(
+        "const channel = inputs.sample;\n"
+        "if (channel.fieldtype !== EpicsType.%1) throw new Error('Incorrect source type');\n"
+        "if (channel.value !== %2) throw new Error('Incorrect scalar value');\n"
+        "if (channel.fieldtype === EpicsType.Enum) {\n"
+        "    const labels = ['OFF', 'ON', 'FAULT'];\n"
+        "    if (channel.label !== labels[channel.value]) throw new Error('Incorrect enum label');\n"
+        "    if (JSON.stringify(channel.enumStrings) !== JSON.stringify(labels))\n"
+        "        throw new Error('Incorrect enum strings');\n"
+        "}").arg(expectedType, expectedValue));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaQtDM_Lib::scriptReceivesMonitoredScalarThroughAlias()
 {
     genSoftPV source(m_parentAS);

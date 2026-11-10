@@ -30,6 +30,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QJSEngine>
+#include <QMetaEnum>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QSet>
@@ -58,6 +59,12 @@ public slots:
             if (m_stopping) return;
             if (!m_engine) m_engine = new QJSEngine(this);
         }
+        QJSValue types = m_engine->newObject();
+        const QMetaEnum typeEnum = QMetaEnum::fromType<caScript::EpicsType>();
+        for (int i = 0; i < typeEnum.keyCount(); ++i) {
+            types.setProperty(QString::fromLatin1(typeEnum.key(i)), typeEnum.value(i));
+        }
+        m_engine->globalObject().setProperty(QStringLiteral("EpicsType"), types);
         QJSValue scriptInputs = m_engine->toScriptValue(inputs);
         QJSValue byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
         QJSValue decodedTextFunction = m_engine->evaluate(QStringLiteral(
@@ -133,7 +140,7 @@ void caScript::executeScript()
     QVariantMap snapshot;
     for (int i = 0; i < m_inputChannels.size(); ++i) {
         const InputChannel &input = m_inputChannels.at(i);
-        QVariantMap channel;
+        QVariantMap channel = m_inputMetadata.value(i);
         if (m_inputValues.contains(i)) {
             channel.insert(QStringLiteral("value"), m_inputValues.value(i));
         }
@@ -157,6 +164,13 @@ void caScript::updateInputRawBytes(int index, const QByteArray &bytes)
 {
     if (index >= 0 && index < m_inputChannels.size()) {
         m_inputRawBytes.insert(index, bytes);
+    }
+}
+
+void caScript::updateInputMetadata(int index, const QVariantMap &metadata)
+{
+    if (index >= 0 && index < m_inputChannels.size()) {
+        m_inputMetadata.insert(index, metadata);
     }
 }
 
@@ -222,6 +236,7 @@ void caScript::setInputChannels(const QList<InputChannel> &inputs)
     m_inputChannels = inputs;
     m_inputValues.clear();
     m_inputRawBytes.clear();
+    m_inputMetadata.clear();
     m_inputJsonError.clear();
 }
 

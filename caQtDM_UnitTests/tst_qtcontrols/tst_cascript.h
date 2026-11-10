@@ -48,6 +48,7 @@ private slots:
     void scriptExecutionKeepsGuiEventLoopResponsive();
     void latin1DecodingPreservesInputSnapshot();
     void utf8DecodingPreservesInputSnapshot();
+    void inputReconfigurationClearsSnapshot();
 };
 
 #endif // TST_CASCRIPT_H

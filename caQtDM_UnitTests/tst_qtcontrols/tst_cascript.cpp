@@ -343,6 +343,28 @@ void TestCaScript::utf8DecodingPreservesInputSnapshot()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaScript::inputReconfigurationClearsSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://old"), QStringLiteral("sample")}});
+    widget.updateInputValue(0, 1);
+    widget.updateInputRawBytes(0, QByteArray("old"));
+    widget.updateInputMetadata(0, {
+        {QStringLiteral("fieldtype"), int(caScript::Enum)},
+        {QStringLiteral("label"), QStringLiteral("ON")},
+        {QStringLiteral("enumStrings"), QStringList({QStringLiteral("OFF"), QStringLiteral("ON")})}
+    });
+    widget.setInputChannels({{QStringLiteral("internal://new"), QStringLiteral("sample")}});
+    widget.setScript(QStringLiteral(
+        "if (Object.keys(inputs.sample).length !== 0) throw new Error('Stale input snapshot');"));
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 {
     const QList<caScript::InputChannel> inputs = {

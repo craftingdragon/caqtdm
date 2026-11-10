@@ -30,6 +30,7 @@
 #include <QByteArray>
 #include <QMap>
 #include <QStringList>
+#include <QVariantMap>
 #include <QWidget>
 #include <qtcontrols_global.h>
 
@@ -44,6 +45,9 @@ class QTCON_EXPORT caScript : public QWidget
     Q_PROPERTY(QString channels READ getChannels WRITE setChannels)
 
 public:
+    enum EpicsType { String = 0, Short = 1, Float = 2, Enum = 3, Char = 4, Long = 5, Double = 6 };
+    Q_ENUM(EpicsType)
+
     struct InputChannel
     {
         QString channel;
@@ -68,6 +72,7 @@ public slots:
     void executeScript();
     void updateInputValue(int index, const QVariant &value);
     void updateInputRawBytes(int index, const QByteArray &bytes);
+    void updateInputMetadata(int index, const QVariantMap &metadata);
 
 signals:
     void scriptFinished(bool success);
@@ -77,6 +82,7 @@ private:
     QList<InputChannel> m_inputChannels;
     QMap<int, QVariant> m_inputValues;
     QMap<int, QByteArray> m_inputRawBytes;
+    QMap<int, QVariantMap> m_inputMetadata;
     QString m_inputJsonError;
     QThread *m_executionThread = nullptr;
     CaScriptWorker *m_worker = nullptr;
