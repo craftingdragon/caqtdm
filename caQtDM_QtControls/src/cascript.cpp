@@ -36,6 +36,57 @@
 #include <QSet>
 #include <QThread>
 #include <QTimer>
+#include <cmath>
+#include <limits>
+
+namespace {
+QVariantMap scalarConversion(const QVariant &value, caScript::EpicsType type)
+{
+    const auto failure = [](const QString &message) {
+        return QVariantMap{{QStringLiteral("error"), message}};
+    };
+    if (type == caScript::String && value.userType() == QMetaType::QString) {
+        return {{QStringLiteral("value"), value}};
+    }
+    bool ok = false;
+    const double number = value.toDouble(&ok);
+    if (!ok) return failure(QStringLiteral("Input cannot be converted to a number"));
+    QVariant result;
+    switch (type) {
+    case caScript::String:
+        result = QString::number(number, 'g', 17);
+        break;
+    case caScript::Double:
+        result = number;
+        break;
+    case caScript::Float:
+        if (qIsFinite(number) && qAbs(number) > std::numeric_limits<float>::max()) {
+            return failure(QStringLiteral("Input exceeds the float range"));
+        }
+        result = double(float(number));
+        break;
+    default: {
+        if (!qIsFinite(number)) return failure(QStringLiteral("Integer conversion requires a finite number"));
+        double minimum;
+        double maximum;
+        switch (type) {
+        case caScript::Short: minimum = -32768; maximum = 32767; break;
+        case caScript::Long: minimum = -2147483648.0; maximum = 2147483647; break;
+        case caScript::Char: minimum = 0; maximum = 255; break;
+        case caScript::Enum: minimum = 0; maximum = 65535; break;
+        default: return failure(QStringLiteral("Unknown EPICS conversion type"));
+        }
+        const double rounded = std::round(number);
+        if (rounded < minimum || rounded > maximum) {
+            return failure(QStringLiteral("Input exceeds the target range"));
+        }
+        result = double(std::llround(number));
+        break;
+    }
+    }
+    return {{QStringLiteral("value"), result}};
+}
+}
 
 class CaScriptWorker : public QObject
 {
@@ -69,15 +120,32 @@ public slots:
         QJSValue byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
         QJSValue decodedTextFunction = m_engine->evaluate(QStringLiteral(
             "(function(text) { return function() { return text; }; })"));
+        QJSValue conversionFunction = m_engine->evaluate(QStringLiteral(
+            "(function(results) { return function(type) {\n"
+            "if (typeof type !== 'number' || !Object.prototype.hasOwnProperty.call(results, type))\n"
+            "    throw new TypeError('Unknown EPICS conversion type');\n"
+            "const result = results[type];\n"
+            "if (result.error !== undefined) throw new RangeError(result.error);\n"
+            "return result.value; }; })"));
         for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
             const QVariantMap channel = it.value().toMap();
+            QJSValue scriptChannel = scriptInputs.property(it.key());
+            if (channel.contains(QStringLiteral("value"))) {
+                // Convert the snapshot in C++; expose only the captured results to JavaScript.
+                QVariantMap conversions;
+                for (int i = 0; i < typeEnum.keyCount(); ++i) {
+                    const auto type = static_cast<caScript::EpicsType>(typeEnum.value(i));
+                    conversions.insert(QString::number(type), scalarConversion(channel.value(QStringLiteral("value")), type));
+                }
+                scriptChannel.setProperty(QStringLiteral("convert"),
+                                          conversionFunction.call({m_engine->toScriptValue(conversions)}));
+            }
             if (!channel.contains(QStringLiteral("rawBytes"))) continue;
             const QByteArray bytes = channel.value(QStringLiteral("rawBytes")).toByteArray();
             QJSValue array = m_engine->newArray(bytes.size());
             for (int i = 0; i < bytes.size(); ++i) {
                 array.setProperty(i, static_cast<unsigned char>(bytes.at(i)));
             }
-            QJSValue scriptChannel = scriptInputs.property(it.key());
             scriptChannel.setProperty(QStringLiteral("rawBytes"), byteArrayConstructor.callAsConstructor({array}));
             // Decode the original snapshot in C++, independently of the displayed value.
             scriptChannel.setProperty(QStringLiteral("fromLatin1"),

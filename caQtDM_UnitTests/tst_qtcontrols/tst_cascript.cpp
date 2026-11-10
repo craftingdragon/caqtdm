@@ -426,6 +426,83 @@ void TestCaScript::invalidOutputJsonPreservesConfiguration()
     QVERIFY(!widget.outputConfigurationErrors().isEmpty());
 }
 
+void TestCaScript::explicitScalarConversions_data()
+{
+    QTest::addColumn<QVariant>("value");
+    QTest::addColumn<QString>("target");
+    QTest::addColumn<QVariant>("expected");
+    QTest::newRow("positive-half") << QVariant(3.5) << QStringLiteral("Short") << QVariant(4.0);
+    QTest::newRow("negative-half") << QVariant(-3.5) << QStringLiteral("Long") << QVariant(-4.0);
+    QTest::newRow("zero") << QVariant(0) << QStringLiteral("Short") << QVariant(0.0);
+    QTest::newRow("short-min") << QVariant(-32768) << QStringLiteral("Short") << QVariant(-32768.0);
+    QTest::newRow("short-max") << QVariant(32767) << QStringLiteral("Short") << QVariant(32767.0);
+    QTest::newRow("long-min") << QVariant(-2147483648.0) << QStringLiteral("Long") << QVariant(-2147483648.0);
+    QTest::newRow("long-max") << QVariant(2147483647.0) << QStringLiteral("Long") << QVariant(2147483647.0);
+    QTest::newRow("char") << QVariant(65) << QStringLiteral("Char") << QVariant(65.0);
+    QTest::newRow("enum") << QVariant(2) << QStringLiteral("Enum") << QVariant(2.0);
+    QTest::newRow("float") << QVariant(0.1) << QStringLiteral("Float") << QVariant(double(float(0.1)));
+    QTest::newRow("double") << QVariant(QStringLiteral("3.75")) << QStringLiteral("Double") << QVariant(3.75);
+    QTest::newRow("numeric-string") << QVariant(QStringLiteral("-3.5")) << QStringLiteral("Short") << QVariant(-4.0);
+    QTest::newRow("number-as-string") << QVariant(3.75) << QStringLiteral("String") << QVariant(QStringLiteral("3.75"));
+    QTest::newRow("string") << QVariant(QStringLiteral("Grüezi")) << QStringLiteral("String") << QVariant(QStringLiteral("Grüezi"));
+    QTest::newRow("empty-string") << QVariant(QString()) << QStringLiteral("String") << QVariant(QString());
+    QTest::newRow("short-overflow") << QVariant(32767.5) << QStringLiteral("Short") << QVariant();
+    QTest::newRow("long-overflow") << QVariant(2147483648.0) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("char-negative") << QVariant(-1) << QStringLiteral("Char") << QVariant();
+    QTest::newRow("char-overflow") << QVariant(256) << QStringLiteral("Char") << QVariant();
+    QTest::newRow("enum-overflow") << QVariant(65536) << QStringLiteral("Enum") << QVariant();
+    QTest::newRow("float-overflow") << QVariant(1e100) << QStringLiteral("Float") << QVariant();
+    QTest::newRow("invalid-text") << QVariant(QStringLiteral("not a number")) << QStringLiteral("Double") << QVariant();
+    QTest::newRow("nan-integer") << QVariant(qQNaN()) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("infinity-integer") << QVariant(qInf()) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("unknown-type") << QVariant(42) << QStringLiteral("Missing") << QVariant();
+}
+
+void TestCaScript::explicitScalarConversions()
+{
+    QFETCH(QVariant, value);
+    QFETCH(QString, target);
+    QFETCH(QVariant, expected);
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://sample"), QStringLiteral("sample")}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.updateInputValue(0, value);
+    widget.setScript(QStringLiteral(
+        "outputs.result.value = 99;\n"
+        "outputs.result.value = inputs.sample.convert(EpicsType.%1);").arg(target));
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.first().first().toBool(), expected.isValid());
+    QCOMPARE(values.count(), expected.isValid() ? 1 : 0);
+    if (!expected.isValid()) return;
+    const QVariant actual = values.first().first().toMap().value(QStringLiteral("result"));
+    QCOMPARE(actual.userType() == QMetaType::QString, expected.userType() == QMetaType::QString);
+    if (expected.userType() == QMetaType::QString) QCOMPARE(actual.toString(), expected.toString());
+    else QCOMPARE(actual.toDouble(), expected.toDouble());
+}
+
+void TestCaScript::conversionsPreserveInputSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://text"), QStringLiteral("text")}});
+    widget.updateInputValue(0, QStringLiteral("3.5"));
+    widget.updateInputRawBytes(0, QByteArray("3.5"));
+    widget.setScript(QStringLiteral(
+        "const channel = inputs.text;\n"
+        "if (channel.convert(EpicsType.Short) !== 4) throw new Error('Incorrect integer');\n"
+        "if (channel.convert(EpicsType.Double) !== 3.5) throw new Error('Incorrect number');\n"
+        "if (channel.value !== '3.5') throw new Error('Changed input');\n"
+        "if (channel.rawBytes.length !== 3 || channel.rawBytes[0] !== 51\n"
+        "    || channel.rawBytes[1] !== 46 || channel.rawBytes[2] !== 53)\n"
+        "    throw new Error('Changed bytes');"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 {
     const QList<caScript::InputChannel> inputs = {

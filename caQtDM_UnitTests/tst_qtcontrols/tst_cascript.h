@@ -53,6 +53,9 @@ private slots:
     void failedScriptDiscardsOutputs_data();
     void failedScriptDiscardsOutputs();
     void invalidOutputJsonPreservesConfiguration();
+    void explicitScalarConversions_data();
+    void explicitScalarConversions();
+    void conversionsPreserveInputSnapshot();
 };
 
 #endif // TST_CASCRIPT_H
