@@ -554,29 +554,49 @@ void TestCaQtDM_Lib::scriptReceivesStringWaveform()
 
 void TestCaQtDM_Lib::scriptReceivesMatrix_data()
 {
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("typeName");
+    QTest::addColumn<QString>("sourceValues");
     QTest::addColumn<int>("rows");
     QTest::addColumn<int>("columns");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("two-by-three") << 2 << 3 << QStringLiteral("[[1,2,3],[4,5,6]]");
-    QTest::newRow("single-row") << 1 << 3 << QStringLiteral("[[1,2,3]]");
-    QTest::newRow("single-column") << 3 << 1 << QStringLiteral("[[1],[2],[3]]");
-    QTest::newRow("single-element") << 1 << 1 << QStringLiteral("[[1]]");
+    const auto addShapes = [](genSoftPV::DataType type, const QString &name,
+                              const QStringList &values, const QStringList &expected) {
+        QTest::newRow(qPrintable(name + "-two-by-three"))
+            << int(type) << name << values.join(';') << 2 << 3 << expected.at(0);
+        QTest::newRow(qPrintable(name + "-single-row"))
+            << int(type) << name << values.mid(0, 3).join(';') << 1 << 3 << expected.at(1);
+        QTest::newRow(qPrintable(name + "-single-column"))
+            << int(type) << name << values.mid(0, 3).join(';') << 3 << 1 << expected.at(2);
+        QTest::newRow(qPrintable(name + "-single-element"))
+            << int(type) << name << values.first() << 1 << 1 << expected.at(3);
+    };
+    addShapes(genSoftPV::Double, "Double", {"1", "2", "3", "4", "5", "6"},
+              {"[[1,2,3],[4,5,6]]", "[[1,2,3]]", "[[1],[2],[3]]", "[[1]]"});
+    addShapes(genSoftPV::Float, "Float", {"-3.75", "0", "2.5", "4", "5", "6"},
+              {"[[-3.75,0,2.5],[4,5,6]]", "[[-3.75,0,2.5]]", "[[-3.75],[0],[2.5]]", "[[-3.75]]"});
+    addShapes(genSoftPV::Int, "Short", {"-32768", "0", "32767", "4", "5", "6"},
+              {"[[-32768,0,32767],[4,5,6]]", "[[-32768,0,32767]]", "[[-32768],[0],[32767]]", "[[-32768]]"});
+    addShapes(genSoftPV::Long, "Long", {"-2147483648", "0", "2147483647", "4", "5", "6"},
+              {"[[-2147483648,0,2147483647],[4,5,6]]", "[[-2147483648,0,2147483647]]",
+               "[[-2147483648],[0],[2147483647]]", "[[-2147483648]]"});
 }
 
 void TestCaQtDM_Lib::scriptReceivesMatrix()
 {
+    QFETCH(int, sourceType);
+    QFETCH(QString, typeName);
+    QFETCH(QString, sourceValues);
     QFETCH(int, rows);
     QFETCH(int, columns);
     QFETCH(QString, expected);
     m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
     genSoftPV source(m_parentAS);
     source.setVariable(QStringLiteral("scriptMatrix"));
-    source.setDataType(genSoftPV::Double);
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
     source.setMatrixRows(rows);
     source.setMatrixColumns(columns);
-    QStringList elements;
-    for (int i = 1; i <= rows * columns; ++i) elements.append(QString::number(i));
-    source.setValue(elements.join(';'));
+    source.setValue(sourceValues);
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
     caScript script(m_parentAS);
@@ -586,8 +606,8 @@ void TestCaQtDM_Lib::scriptReceivesMatrix()
         "if (!Array.isArray(values) || !values.every(Array.isArray))\n"
         "    throw new Error('Expected nested arrays');\n"
         "if (JSON.stringify(values) !== '%1') throw new Error('Incorrect matrix shape or order');\n"
-        "if (inputs.matrix.fieldtype !== EpicsType.Double) throw new Error('Incorrect source type');\n"
-        "values[0][0] = 999;").arg(expected));
+        "if (inputs.matrix.fieldtype !== EpicsType.%2) throw new Error('Incorrect source type');\n"
+        "values[0][0] = 999;").arg(expected, typeName));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
     bool updated = false;
     connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
