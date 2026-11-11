@@ -6666,24 +6666,30 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
-        if (data.edata.connected && data.edata.fieldtype == caDOUBLE
+        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT)
             && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            const bool isDouble = data.edata.fieldtype == caDOUBLE;
+            const int elementSize = isDouble ? sizeof(double) : sizeof(float);
             QVariantList values;
             bool valid = false;
             {
                 QMutexLocker lock(static_cast<QMutex *>(data.mutex));
                 const int count = data.edata.valueCount;
                 if (count >= 0 && (count == 0 || (data.edata.dataB
-                    && count <= data.edata.dataSize / int(sizeof(double))))) {
-                    const double *buffer = static_cast<const double *>(data.edata.dataB);
+                    && count <= data.edata.dataSize / elementSize))) {
                     values.reserve(count);
-                    for (int i = 0; i < count; ++i) values.append(buffer[i]);
+                    for (int i = 0; i < count; ++i) {
+                        const double value = isDouble
+                            ? static_cast<const double *>(data.edata.dataB)[i]
+                            : static_cast<const float *>(data.edata.dataB)[i];
+                        values.append(value);
+                    }
                     valid = true;
                 }
             }
             if (valid) {
                 scriptWidget->updateInputMetadata(data.specData[0],
-                    {{QStringLiteral("fieldtype"), int(caScript::Double)}});
+                    {{QStringLiteral("fieldtype"), int(isDouble ? caScript::Double : caScript::Float)}});
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
         } else if (data.edata.connected && data.edata.valueCount <= 1
