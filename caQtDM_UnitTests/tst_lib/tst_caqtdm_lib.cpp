@@ -506,6 +506,52 @@ void TestCaQtDM_Lib::scriptReceivesCharWaveform()
     }
 }
 
+void TestCaQtDM_Lib::scriptReceivesStringWaveform_data()
+{
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("used-length-with-empty-text") << 3 << QStringLiteral("[\"A\",\"\",\"B\"]");
+    QTest::newRow("one-element") << 1 << QStringLiteral("[\"A\"]");
+    QTest::newRow("empty") << 0 << QStringLiteral("[]");
+}
+
+void TestCaQtDM_Lib::scriptReceivesStringWaveform()
+{
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptStringWaveform"));
+    source.setDataType(genSoftPV::String);
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(QStringLiteral("A;;B;unused;unused"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptStringWaveform"), QStringLiteral("texts")}});
+    script.setScript(QStringLiteral(
+        "if (!Array.isArray(inputs.texts.value) || JSON.stringify(inputs.texts.value) !== '%1')\n"
+        "    throw new Error('Incorrect string waveform values or length');\n"
+        "if (inputs.texts.fieldtype !== EpicsType.String) throw new Error('Incorrect source type');\n"
+        "inputs.texts.value[0] = 'changed';").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
 {
     QTest::addColumn<int>("sourceType");
