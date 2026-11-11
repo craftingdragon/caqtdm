@@ -392,36 +392,43 @@ void TestCaQtDM_Lib::scriptPublishesScaledInput()
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 900.0);
 }
 
-void TestCaQtDM_Lib::scriptReceivesDoubleWaveform_data()
+void TestCaQtDM_Lib::scriptReceivesFloatingPointWaveform_data()
 {
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("typeName");
     QTest::addColumn<int>("used");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("used-length") << 3 << QStringLiteral("[-2,0,3.75]");
-    QTest::newRow("one-element") << 1 << QStringLiteral("[-2]");
-    QTest::newRow("empty") << 0 << QStringLiteral("[]");
+    for (const auto type : {genSoftPV::Double, genSoftPV::Float}) {
+        const QString name = type == genSoftPV::Double ? QStringLiteral("Double") : QStringLiteral("Float");
+        QTest::newRow(qPrintable(name + "-used-length")) << int(type) << name << 3 << QStringLiteral("[-2,0,3.75]");
+        QTest::newRow(qPrintable(name + "-one-element")) << int(type) << name << 1 << QStringLiteral("[-2]");
+        QTest::newRow(qPrintable(name + "-empty")) << int(type) << name << 0 << QStringLiteral("[]");
+    }
 }
 
-void TestCaQtDM_Lib::scriptReceivesDoubleWaveform()
+void TestCaQtDM_Lib::scriptReceivesFloatingPointWaveform()
 {
+    QFETCH(int, sourceType);
+    QFETCH(QString, typeName);
     QFETCH(int, used);
     QFETCH(QString, expected);
     m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
     genSoftPV source(m_parentAS);
-    source.setVariable(QStringLiteral("scriptDoubleWaveform"));
-    source.setDataType(genSoftPV::Double);
+    source.setVariable(QStringLiteral("scriptFloatingPointWaveform"));
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
     source.setNelm(5);
     source.setNord(used);
     source.setValue(QStringLiteral("-2;0;3.75;99;100"));
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
     caScript script(m_parentAS);
-    script.setInputChannels({{QStringLiteral("internal://scriptDoubleWaveform"), QStringLiteral("samples")}});
+    script.setInputChannels({{QStringLiteral("internal://scriptFloatingPointWaveform"), QStringLiteral("samples")}});
     script.setScript(QStringLiteral(
         "const values = inputs.samples.value;\n"
         "if (!Array.isArray(values)) throw new Error('Expected an array');\n"
-        "if (inputs.samples.fieldtype !== EpicsType.Double) throw new Error('Incorrect type');\n"
+        "if (inputs.samples.fieldtype !== EpicsType.%2) throw new Error('Incorrect type');\n"
         "if (JSON.stringify(values) !== JSON.stringify(%1)) throw new Error('Incorrect values or length');\n"
-        "if (values.length) values[0] = 999;").arg(expected));
+        "if (values.length) values[0] = 999;").arg(expected, typeName));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
     bool updated = false;
     connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
@@ -431,7 +438,7 @@ void TestCaQtDM_Lib::scriptReceivesDoubleWaveform()
     });
     QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
     QTRY_VERIFY(updated);
-    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptDoubleWaveform"));
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptFloatingPointWaveform"));
     QVERIFY(input);
     QCOMPARE(input->edata.nelm, 5);
     QCOMPARE(input->edata.valueCount, used);
