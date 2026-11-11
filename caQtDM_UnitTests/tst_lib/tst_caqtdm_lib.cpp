@@ -392,21 +392,23 @@ void TestCaQtDM_Lib::scriptPublishesScaledInput()
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 900.0);
 }
 
-void TestCaQtDM_Lib::scriptReceivesFloatingPointWaveform_data()
+void TestCaQtDM_Lib::scriptReceivesNumericWaveform_data()
 {
     QTest::addColumn<int>("sourceType");
     QTest::addColumn<QString>("typeName");
     QTest::addColumn<int>("used");
     QTest::addColumn<QString>("expected");
-    for (const auto type : {genSoftPV::Double, genSoftPV::Float}) {
-        const QString name = type == genSoftPV::Double ? QStringLiteral("Double") : QStringLiteral("Float");
-        QTest::newRow(qPrintable(name + "-used-length")) << int(type) << name << 3 << QStringLiteral("[-2,0,3.75]");
+    for (const auto type : {genSoftPV::Double, genSoftPV::Float, genSoftPV::Int}) {
+        const QString name = type == genSoftPV::Double ? QStringLiteral("Double")
+            : type == genSoftPV::Float ? QStringLiteral("Float") : QStringLiteral("Short");
+        const QString values = type == genSoftPV::Int ? QStringLiteral("[-2,0,3]") : QStringLiteral("[-2,0,3.75]");
+        QTest::newRow(qPrintable(name + "-used-length")) << int(type) << name << 3 << values;
         QTest::newRow(qPrintable(name + "-one-element")) << int(type) << name << 1 << QStringLiteral("[-2]");
         QTest::newRow(qPrintable(name + "-empty")) << int(type) << name << 0 << QStringLiteral("[]");
     }
 }
 
-void TestCaQtDM_Lib::scriptReceivesFloatingPointWaveform()
+void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
 {
     QFETCH(int, sourceType);
     QFETCH(QString, typeName);
@@ -418,7 +420,8 @@ void TestCaQtDM_Lib::scriptReceivesFloatingPointWaveform()
     source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
     source.setNelm(5);
     source.setNord(used);
-    source.setValue(QStringLiteral("-2;0;3.75;99;100"));
+    source.setValue(sourceType == genSoftPV::Int
+        ? QStringLiteral("-2;0;3;99;100") : QStringLiteral("-2;0;3.75;99;100"));
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
     caScript script(m_parentAS);
