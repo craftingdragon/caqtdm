@@ -460,6 +460,52 @@ void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
     }
 }
 
+void TestCaQtDM_Lib::scriptReceivesCharWaveform_data()
+{
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("used-length") << 3 << QStringLiteral("ABC");
+    QTest::newRow("one-element") << 1 << QStringLiteral("A");
+    QTest::newRow("empty") << 0 << QString();
+}
+
+void TestCaQtDM_Lib::scriptReceivesCharWaveform()
+{
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptCharWaveform"));
+    source.setDataType(genSoftPV::Char);
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(QStringLiteral("65;66;67;88;89"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptCharWaveform"), QStringLiteral("text")}});
+    script.setScript(QStringLiteral(
+        "if (typeof inputs.text.value !== 'string' || inputs.text.value !== '%1')\n"
+        "    throw new Error('Incorrect char waveform text or length');\n"
+        "if (inputs.text.fieldtype !== EpicsType.Char) throw new Error('Incorrect source type');\n"
+        "inputs.text.value = 'changed';").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
 {
     QTest::addColumn<int>("sourceType");

@@ -75,6 +75,8 @@ private slots:
     void scriptPublishesScaledInput();
     void scriptReceivesNumericWaveform_data();
     void scriptReceivesNumericWaveform();
+    void scriptReceivesCharWaveform_data();
+    void scriptReceivesCharWaveform();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
