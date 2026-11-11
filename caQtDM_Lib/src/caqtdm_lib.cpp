@@ -6667,7 +6667,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
         if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
-                                    || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG)
+                                    || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG
+                                    || (data.edata.fieldtype == caCHAR && data.edata.dimCount == 2))
             && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
                 || data.edata.dimCount == 2)) {
             int elementSize;
@@ -6677,6 +6678,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             case caFLOAT: elementSize = sizeof(float); type = caScript::Float; break;
             case caINT: elementSize = sizeof(int16_t); type = caScript::Short; break;
             case caLONG: elementSize = sizeof(int32_t); type = caScript::Long; break;
+            case caCHAR: elementSize = sizeof(uint8_t); type = caScript::Char; break;
             default: return;
             }
             QVariantList values;
@@ -6699,6 +6701,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                         case caFLOAT: value = static_cast<const float *>(data.edata.dataB)[i]; break;
                         case caINT: value = static_cast<const int16_t *>(data.edata.dataB)[i]; break;
                         case caLONG: value = static_cast<const int32_t *>(data.edata.dataB)[i]; break;
+                        case caCHAR: value = static_cast<const uint8_t *>(data.edata.dataB)[i]; break;
                         default: return;
                         }
                         values.append(value);
