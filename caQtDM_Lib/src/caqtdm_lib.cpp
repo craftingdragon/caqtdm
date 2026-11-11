@@ -6668,7 +6668,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
         if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
                                     || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG)
-            && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
+                || data.edata.dimCount == 2)) {
             int elementSize;
             caScript::EpicsType type;
             switch (data.edata.fieldtype) {
@@ -6683,7 +6684,12 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             {
                 QMutexLocker lock(static_cast<QMutex *>(data.mutex));
                 const int count = data.edata.valueCount;
-                if (count >= 0 && (count == 0 || (data.edata.dataB
+                if (data.edata.dimCount == 2 && data.edata.dim[0] == 1
+                    && data.edata.dim[1] == 1 && count == 1 && !data.edata.dataB) {
+                    values.append(data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                        ? data.edata.rvalue : double(data.edata.ivalue));
+                    valid = true;
+                } else if (count >= 0 && (count == 0 || (data.edata.dataB
                     && count <= data.edata.dataSize / elementSize))) {
                     values.reserve(count);
                     for (int i = 0; i < count; ++i) {
@@ -6701,6 +6707,17 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 }
             }
             if (valid) {
+                if (data.edata.dimCount == 2) {
+                    const int rows = data.edata.dim[0];
+                    const int columns = data.edata.dim[1];
+                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) return;
+                    QVariantList matrix;
+                    matrix.reserve(rows);
+                    for (int row = 0; row < rows; ++row) {
+                        matrix.append(QVariant(values.mid(row * columns, columns)));
+                    }
+                    values = matrix;
+                }
                 scriptWidget->updateInputMetadata(data.specData[0],
                     {{QStringLiteral("fieldtype"), int(type)}});
                 scriptWidget->updateInputValue(data.specData[0], values);

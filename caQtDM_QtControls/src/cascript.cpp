@@ -40,6 +40,17 @@
 #include <limits>
 
 namespace {
+QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value)
+{
+    if (value.userType() != QMetaType::QVariantList) return engine->toScriptValue(value);
+    const QVariantList elements = value.toList();
+    QJSValue array = engine->newArray(elements.size());
+    for (int i = 0; i < elements.size(); ++i) {
+        array.setProperty(i, inputValueToScript(engine, elements.at(i)));
+    }
+    return array;
+}
+
 QVariantMap scalarConversion(const QVariant &value, caScript::EpicsType type)
 {
     const auto failure = [](const QString &message) {
@@ -132,12 +143,8 @@ public slots:
             QJSValue scriptChannel = scriptInputs.property(it.key());
             if (channel.contains(QStringLiteral("value"))) {
                 if (channel.value(QStringLiteral("value")).userType() == QMetaType::QVariantList) {
-                    const QVariantList elements = channel.value(QStringLiteral("value")).toList();
-                    QJSValue array = m_engine->newArray(elements.size());
-                    for (int i = 0; i < elements.size(); ++i) {
-                        array.setProperty(i, m_engine->toScriptValue(elements.at(i)));
-                    }
-                    scriptChannel.setProperty(QStringLiteral("value"), array);
+                    scriptChannel.setProperty(QStringLiteral("value"),
+                        inputValueToScript(m_engine, channel.value(QStringLiteral("value"))));
                 }
                 // Convert the snapshot in C++; expose only the captured results to JavaScript.
                 QVariantMap conversions;
