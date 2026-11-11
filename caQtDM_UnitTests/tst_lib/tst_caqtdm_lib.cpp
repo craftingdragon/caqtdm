@@ -552,6 +552,65 @@ void TestCaQtDM_Lib::scriptReceivesStringWaveform()
     }
 }
 
+void TestCaQtDM_Lib::scriptReceivesMatrix_data()
+{
+    QTest::addColumn<int>("rows");
+    QTest::addColumn<int>("columns");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("two-by-three") << 2 << 3 << QStringLiteral("[[1,2,3],[4,5,6]]");
+    QTest::newRow("single-row") << 1 << 3 << QStringLiteral("[[1,2,3]]");
+    QTest::newRow("single-column") << 3 << 1 << QStringLiteral("[[1],[2],[3]]");
+    QTest::newRow("single-element") << 1 << 1 << QStringLiteral("[[1]]");
+}
+
+void TestCaQtDM_Lib::scriptReceivesMatrix()
+{
+    QFETCH(int, rows);
+    QFETCH(int, columns);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptMatrix"));
+    source.setDataType(genSoftPV::Double);
+    source.setMatrixRows(rows);
+    source.setMatrixColumns(columns);
+    QStringList elements;
+    for (int i = 1; i <= rows * columns; ++i) elements.append(QString::number(i));
+    source.setValue(elements.join(';'));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptMatrix"), QStringLiteral("matrix")}});
+    script.setScript(QStringLiteral(
+        "const values = inputs.matrix.value;\n"
+        "if (!Array.isArray(values) || !values.every(Array.isArray))\n"
+        "    throw new Error('Expected nested arrays');\n"
+        "if (JSON.stringify(values) !== '%1') throw new Error('Incorrect matrix shape or order');\n"
+        "if (inputs.matrix.fieldtype !== EpicsType.Double) throw new Error('Incorrect source type');\n"
+        "values[0][0] = 999;").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptMatrix"));
+    QVERIFY(input);
+    QCOMPARE(input->edata.dimCount, 2);
+    QCOMPARE(input->edata.dim[0], rows);
+    QCOMPARE(input->edata.dim[1], columns);
+    QCOMPARE(input->edata.valueCount, rows * columns);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
 {
     QTest::addColumn<int>("sourceType");
