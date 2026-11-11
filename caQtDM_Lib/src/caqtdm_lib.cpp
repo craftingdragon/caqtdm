@@ -6666,10 +6666,15 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
-        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT)
+        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                                    || data.edata.fieldtype == caINT)
             && data.edata.nelm > 1 && data.edata.dimCount == 0) {
             const bool isDouble = data.edata.fieldtype == caDOUBLE;
-            const int elementSize = isDouble ? sizeof(double) : sizeof(float);
+            const bool isFloat = data.edata.fieldtype == caFLOAT;
+            const int elementSize = isDouble ? sizeof(double)
+                : isFloat ? sizeof(float) : sizeof(int16_t);
+            const caScript::EpicsType type = isDouble ? caScript::Double
+                : isFloat ? caScript::Float : caScript::Short;
             QVariantList values;
             bool valid = false;
             {
@@ -6681,7 +6686,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     for (int i = 0; i < count; ++i) {
                         const double value = isDouble
                             ? static_cast<const double *>(data.edata.dataB)[i]
-                            : static_cast<const float *>(data.edata.dataB)[i];
+                            : isFloat ? static_cast<const float *>(data.edata.dataB)[i]
+                                      : static_cast<const int16_t *>(data.edata.dataB)[i];
                         values.append(value);
                     }
                     valid = true;
@@ -6689,7 +6695,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             }
             if (valid) {
                 scriptWidget->updateInputMetadata(data.specData[0],
-                    {{QStringLiteral("fieldtype"), int(isDouble ? caScript::Double : caScript::Float)}});
+                    {{QStringLiteral("fieldtype"), int(type)}});
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
         } else if (data.edata.connected && data.edata.valueCount <= 1
