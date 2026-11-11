@@ -6705,6 +6705,11 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     {{QStringLiteral("fieldtype"), int(type)}});
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
+        } else if (data.edata.connected && data.edata.fieldtype == caCHAR
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            scriptWidget->updateInputMetadata(data.specData[0],
+                {{QStringLiteral("fieldtype"), int(caScript::Char)}});
+            scriptWidget->updateInputValue(data.specData[0], String);
         } else if (data.edata.connected && data.edata.valueCount <= 1
                    && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
             QVariantMap metadata;
