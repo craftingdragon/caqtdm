@@ -6667,14 +6667,17 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
         if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
-                                    || data.edata.fieldtype == caINT)
+                                    || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG)
             && data.edata.nelm > 1 && data.edata.dimCount == 0) {
-            const bool isDouble = data.edata.fieldtype == caDOUBLE;
-            const bool isFloat = data.edata.fieldtype == caFLOAT;
-            const int elementSize = isDouble ? sizeof(double)
-                : isFloat ? sizeof(float) : sizeof(int16_t);
-            const caScript::EpicsType type = isDouble ? caScript::Double
-                : isFloat ? caScript::Float : caScript::Short;
+            int elementSize;
+            caScript::EpicsType type;
+            switch (data.edata.fieldtype) {
+            case caDOUBLE: elementSize = sizeof(double); type = caScript::Double; break;
+            case caFLOAT: elementSize = sizeof(float); type = caScript::Float; break;
+            case caINT: elementSize = sizeof(int16_t); type = caScript::Short; break;
+            case caLONG: elementSize = sizeof(int32_t); type = caScript::Long; break;
+            default: return;
+            }
             QVariantList values;
             bool valid = false;
             {
@@ -6684,10 +6687,14 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     && count <= data.edata.dataSize / elementSize))) {
                     values.reserve(count);
                     for (int i = 0; i < count; ++i) {
-                        const double value = isDouble
-                            ? static_cast<const double *>(data.edata.dataB)[i]
-                            : isFloat ? static_cast<const float *>(data.edata.dataB)[i]
-                                      : static_cast<const int16_t *>(data.edata.dataB)[i];
+                        double value;
+                        switch (data.edata.fieldtype) {
+                        case caDOUBLE: value = static_cast<const double *>(data.edata.dataB)[i]; break;
+                        case caFLOAT: value = static_cast<const float *>(data.edata.dataB)[i]; break;
+                        case caINT: value = static_cast<const int16_t *>(data.edata.dataB)[i]; break;
+                        case caLONG: value = static_cast<const int32_t *>(data.edata.dataB)[i]; break;
+                        default: return;
+                        }
                         values.append(value);
                     }
                     valid = true;

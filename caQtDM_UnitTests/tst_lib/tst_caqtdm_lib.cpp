@@ -406,6 +406,11 @@ void TestCaQtDM_Lib::scriptReceivesNumericWaveform_data()
         QTest::newRow(qPrintable(name + "-one-element")) << int(type) << name << 1 << QStringLiteral("[-2]");
         QTest::newRow(qPrintable(name + "-empty")) << int(type) << name << 0 << QStringLiteral("[]");
     }
+    QTest::newRow("Long-used-length") << int(genSoftPV::Long) << QStringLiteral("Long") << 3
+        << QStringLiteral("[-2147483648,0,2147483647]");
+    QTest::newRow("Long-one-element") << int(genSoftPV::Long) << QStringLiteral("Long") << 1
+        << QStringLiteral("[-2147483648]");
+    QTest::newRow("Long-empty") << int(genSoftPV::Long) << QStringLiteral("Long") << 0 << QStringLiteral("[]");
 }
 
 void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
@@ -420,7 +425,8 @@ void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
     source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
     source.setNelm(5);
     source.setNord(used);
-    source.setValue(sourceType == genSoftPV::Int
+    source.setValue(sourceType == genSoftPV::Long
+        ? QStringLiteral("-2147483648;0;2147483647;99;100") : sourceType == genSoftPV::Int
         ? QStringLiteral("-2;0;3;99;100") : QStringLiteral("-2;0;3.75;99;100"));
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
