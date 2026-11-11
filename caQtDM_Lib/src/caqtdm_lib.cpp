@@ -6705,6 +6705,17 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     {{QStringLiteral("fieldtype"), int(type)}});
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
+        } else if (data.edata.connected && data.edata.fieldtype == caSTRING
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0
+                   && data.edata.valueCount >= 0) {
+            const QStringList texts = String.split(QChar(27));
+            QVariantList values;
+            for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
+                values.append(texts.at(i));
+            }
+            scriptWidget->updateInputMetadata(data.specData[0],
+                {{QStringLiteral("fieldtype"), int(caScript::String)}});
+            scriptWidget->updateInputValue(data.specData[0], values);
         } else if (data.edata.connected && data.edata.fieldtype == caCHAR
                    && data.edata.nelm > 1 && data.edata.dimCount == 0) {
             scriptWidget->updateInputMetadata(data.specData[0],
