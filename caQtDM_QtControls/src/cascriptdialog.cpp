@@ -28,6 +28,8 @@
 
 #include <QDialogButtonBox>
 #include <QHeaderView>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -43,11 +45,34 @@ CaScriptDialog::CaScriptDialog(caScript *widget, const QString &property, QWidge
     table->setHorizontalHeaderLabels({tr("Channel"), tr("Alias (optional)")});
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
     for (int row = 0; row < channels.size(); ++row) {
         table->setItem(row, 0, new QTableWidgetItem(channels.at(row).channel));
         table->setItem(row, 1, new QTableWidgetItem(channels.at(row).alias));
     }
     layout->addWidget(table);
+
+    auto *rowActions = new QHBoxLayout;
+    auto *add = new QPushButton(tr("Add"), this);
+    auto *remove = new QPushButton(tr("Remove"), this);
+    add->setObjectName(QStringLiteral("addChannel"));
+    remove->setObjectName(QStringLiteral("removeChannel"));
+    rowActions->addWidget(add);
+    rowActions->addWidget(remove);
+    rowActions->addStretch();
+    layout->addLayout(rowActions);
+    connect(add, &QPushButton::clicked, table, [table]() {
+        const int row = table->rowCount();
+        table->insertRow(row);
+        table->setItem(row, 0, new QTableWidgetItem);
+        table->setItem(row, 1, new QTableWidgetItem);
+        table->setCurrentCell(row, 0);
+        table->setFocus();
+    });
+    connect(remove, &QPushButton::clicked, table, [table]() {
+        const auto rows = table->selectionModel()->selectedRows();
+        if (!rows.isEmpty()) table->removeRow(rows.first().row());
+    });
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
