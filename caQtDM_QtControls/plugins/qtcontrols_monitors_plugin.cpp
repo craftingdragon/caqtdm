@@ -32,6 +32,7 @@
 
 
 #include <QtControls>
+#include "cascript.h"
 #include "caalarmtree.h"   // not in the umbrella header (needs caQtDM_Parsers/alhParserSrc)
 #include <qtcontrols_monitors_plugin.h>
 #include <qglobal.h>
@@ -507,6 +508,25 @@ caCalcInterface::caCalcInterface(QObject* parent) : CustomWidgetInterface_Monito
     d_icon = qpixmap.scaled(70, 70, Qt::IgnoreAspectRatio, Qt::FastTransformation);
 }
 
+QWidget *caScriptInterface::createWidget(QWidget* parent)
+{
+    return new caScript(parent);
+}
+
+caScriptInterface::caScriptInterface(QObject* parent) : CustomWidgetInterface_Monitors(parent)
+{
+    strng name[2] = {"script", "channels"};
+    strng type[2] = {"multiline", "multiline"};
+    longtext text[2] = {"JavaScript source", "Input channels and optional aliases as JSON"};
+
+    d_domXml = XmlFunc("caScript", "cascript", 0, 0, 100, 20, name, type, text, 2);
+    d_toolTip = "[JavaScript calculations using monitored channels]";
+    d_name = "caScript";
+    d_include = "cascript.h";
+    QPixmap qpixmap(":pixmaps/cascript.png");
+    d_icon = qpixmap.scaled(70, 70, Qt::IgnoreAspectRatio, Qt::FastTransformation);
+}
+
 QWidget *genSoftPVInterface::createWidget(QWidget* parent)
 {
     return new genSoftPV(parent);
@@ -682,6 +702,7 @@ CustomWidgetCollectionInterface_Monitors::CustomWidgetCollectionInterface_Monito
     d_plugins.append(new caBitnamesInterface(this));
     d_plugins.append(new caCameraInterface(this));
     d_plugins.append(new caCalcInterface(this));
+    d_plugins.append(new caScriptInterface(this));
     d_plugins.append(new genSoftPVInterface(this));
     d_plugins.append(new caWaterfallPlotInterface(this));
     d_plugins.append(new caScan2DInterface(this));

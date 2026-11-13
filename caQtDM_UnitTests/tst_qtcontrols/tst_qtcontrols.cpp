@@ -28,6 +28,7 @@
 #include <clocale>
 
 #include "tst_gensoftpv.h"
+#include "tst_cascript.h"
 #include "tst_canumeric.h"
 #include "tst_caspinbox.h"
 #include "tst_caapplynumeric.h"
@@ -55,6 +56,11 @@ int main(int argc, char **argv)
 
     {
         TestGenSoftPV tc;
+        status |= QTest::qExec(&tc, argc, argv);
+    }
+
+    {
+        TestCaScript tc;
         status |= QTest::qExec(&tc, argc, argv);
     }
 

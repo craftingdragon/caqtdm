@@ -1,0 +1,215 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ui version="4.0">
+ <class>ScriptScalarTest</class>
+ <widget class="QMainWindow" name="ScriptScalarTest">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>660</width>
+    <height>320</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript: EPICS score × internal factor</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="instructions">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>15</y>
+      <width>620</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Start the epics_pacman IOC, then execute the script.
+Change the factor and execute again to update the result.</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="scoreLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>80</y>
+      <width>180</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>IOC score</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="score">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>80</y>
+      <width>400</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>epics3://PACMAN:PACMAN_USER_SCORE</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="factorLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>130</y>
+      <width>180</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Factor (editable)</string>
+    </property>
+   </widget>
+   <widget class="caTextEntry" name="factor">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>130</y>
+      <width>400</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptFactor</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="resultLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>180</y>
+      <width>180</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Scaled score</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="result">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>180</y>
+      <width>400</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptScaledScore</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="execute">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>235</y>
+      <width>200</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Execute script</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="factorDefinition">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>280</y>
+      <width>240</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptFactor</string>
+    </property>
+    <property name="value">
+     <string>2</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="resultDefinition">
+    <property name="geometry">
+     <rect>
+      <x>330</x>
+      <y>280</y>
+      <width>240</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptScaledScore</string>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+   </widget>
+   <widget class="caScript" name="scaleScript">
+    <property name="geometry">
+     <rect>
+      <x>640</x>
+      <y>280</y>
+      <width>10</width>
+      <height>10</height>
+     </rect>
+    </property>
+    <property name="channels">
+     <string>[{"channel":"epics3://PACMAN:PACMAN_USER_SCORE","alias":"score"},{"channel":"internal://scriptFactor","alias":"factor"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"channel":"internal://scriptScaledScore","alias":"result"}]</string>
+    </property>
+    <property name="script">
+     <string>if (!("value" in inputs.score) || !("value" in inputs.factor)) {
+    throw new Error("Input values are not available yet");
+}
+outputs.result.value = inputs.score.value * inputs.factor.value;</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>calineedit.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>QLineEdit</extends>
+   <header>catextentry.h</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QWidget</extends>
+   <header>gensoftpv.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections>
+  <connection>
+   <sender>execute</sender>
+   <signal>clicked()</signal>
+   <receiver>scaleScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>

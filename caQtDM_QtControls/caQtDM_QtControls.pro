@@ -12,7 +12,7 @@ contains(QT_VER_MAJ, 4) {
       CONFIG += designer
 }
 contains(QT_VER_MAJ, 5) {
-      QT += widgets concurrent uitools opengl network
+      QT += widgets concurrent uitools opengl network qml
       CONFIG  += qwt plugin cahmi
       DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x000000
       ios | android {
@@ -26,7 +26,7 @@ contains(QT_VER_MAJ, 5) {
       }
 }
 contains(QT_VER_MAJ, 6) {
-      QT += widgets concurrent opengl core network xml
+      QT += widgets concurrent opengl core network xml qml
       !android {
         QT += uitools
       }
@@ -131,6 +131,7 @@ SOURCES	+= \
     src/uiconverter.cpp \
     src/catogglebutton.cpp \
     src/cascriptbutton.cpp \
+    src/cascript.cpp \
     src/cadoubletabwidget.cpp \
     src/stripplotthread.cpp \
     src/cawaterfallplot.cpp \
@@ -271,6 +272,7 @@ HEADERS	+= \
     src/uiconverter.h \
     src/catogglebutton.h \
     src/cascriptbutton.h \
+    src/cascript.h \
     src/cadoubletabwidget.h \
     src/stripplotthread.h \
     src/cawaterfallplot.h \

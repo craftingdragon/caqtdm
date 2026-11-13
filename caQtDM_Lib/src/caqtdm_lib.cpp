@@ -29,6 +29,7 @@
 
 #include "caQtDM_Lib_global.h"
 #include <stdint.h>
+#include <limits>
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
@@ -48,6 +49,7 @@
 #endif
 
 #include <QObject>
+#include <QMutexLocker>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -82,6 +84,7 @@
 
 #include "caqtdm_lib.h"
 #include "caalarmtree.h"      // not part of the QtControls umbrella header
+#include "cascript.h"
 #include "uiconverter.h"
 #include "fileFunctions.h"
 
@@ -3579,8 +3582,40 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
 
         connect(tableWidget, SIGNAL(TableDoubleClickedSignal(QString)), this, SLOT(Callback_TableDoubleClicked(QString)));
 
-        // alarm handler tree: the widget parses its alh configuration and lists the pvs, the lib subscribes and writes
+        // caScript inputs are subscribed by the lib, independently of the data plugin
         //==================================================================================================================
+    } else if(caScript* scriptWidget = qobject_cast<caScript *>(w1)) {
+        scriptWidget->setProperty("ObjectType", caScript_Widget);
+        scriptWidget->setProperty("Taken", true);
+        const QStringList errors = scriptWidget->inputConfigurationErrors()
+                                   + scriptWidget->outputConfigurationErrors();
+        if (!errors.isEmpty()) {
+            integerList.append(0);
+            scriptWidget->setProperty("MonitorList", integerList);
+            for (const QString &error : errors) {
+                const QString message = tr("caScript %1: %2").arg(w1->objectName(), error);
+                qCWarning(caQtDMLibLog).noquote() << message;
+                postMessage(QtWarningMsg, (char*) qasc(message));
+            }
+            return;
+        }
+
+        const QList<caScript::InputChannel> inputs = scriptWidget->getInputChannels();
+        for (int i = 0; i < inputs.size(); ++i) {
+            specData[0] = i;
+            w1->setToolTip(QString());
+            const int num = addMonitor(myWidget, &kData, inputs.at(i).channel, w1, specData, map, &pv);
+            integerList.append(num);
+            ++nbMonitors;
+        }
+        integerList.insert(0, nbMonitors);
+        scriptWidget->setProperty("MonitorList", integerList);
+
+        QList<caScript::InputChannel> outputs = scriptWidget->getOutputChannels();
+        for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
+        scriptWidget->setOutputChannels(outputs);
+        connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
+
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
 
         w1->setProperty("ObjectType", caAlarmTree_Widget);
@@ -6630,6 +6665,128 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         }
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
+    } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
+        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                                    || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG
+                                    || (data.edata.fieldtype == caCHAR && data.edata.dimCount == 2))
+            && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
+                || data.edata.dimCount == 2)) {
+            int elementSize;
+            caScript::EpicsType type;
+            switch (data.edata.fieldtype) {
+            case caDOUBLE: elementSize = sizeof(double); type = caScript::Double; break;
+            case caFLOAT: elementSize = sizeof(float); type = caScript::Float; break;
+            case caINT: elementSize = sizeof(int16_t); type = caScript::Short; break;
+            case caLONG: elementSize = sizeof(int32_t); type = caScript::Long; break;
+            case caCHAR: elementSize = sizeof(uint8_t); type = caScript::Char; break;
+            default: return;
+            }
+            QVariantList values;
+            bool valid = false;
+            {
+                QMutexLocker lock(static_cast<QMutex *>(data.mutex));
+                const int count = data.edata.valueCount;
+                if (data.edata.dimCount == 2 && data.edata.dim[0] == 1
+                    && data.edata.dim[1] == 1 && count == 1 && !data.edata.dataB) {
+                    values.append(data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                        ? data.edata.rvalue : double(data.edata.ivalue));
+                    valid = true;
+                } else if (count >= 0 && (count == 0 || (data.edata.dataB
+                    && count <= data.edata.dataSize / elementSize))) {
+                    values.reserve(count);
+                    for (int i = 0; i < count; ++i) {
+                        double value;
+                        switch (data.edata.fieldtype) {
+                        case caDOUBLE: value = static_cast<const double *>(data.edata.dataB)[i]; break;
+                        case caFLOAT: value = static_cast<const float *>(data.edata.dataB)[i]; break;
+                        case caINT: value = static_cast<const int16_t *>(data.edata.dataB)[i]; break;
+                        case caLONG: value = static_cast<const int32_t *>(data.edata.dataB)[i]; break;
+                        case caCHAR: value = static_cast<const uint8_t *>(data.edata.dataB)[i]; break;
+                        default: return;
+                        }
+                        values.append(value);
+                    }
+                    valid = true;
+                }
+            }
+            if (valid) {
+                if (data.edata.dimCount == 2) {
+                    const int rows = data.edata.dim[0];
+                    const int columns = data.edata.dim[1];
+                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) return;
+                    QVariantList matrix;
+                    matrix.reserve(rows);
+                    for (int row = 0; row < rows; ++row) {
+                        matrix.append(QVariant(values.mid(row * columns, columns)));
+                    }
+                    values = matrix;
+                }
+                scriptWidget->updateInputMetadata(data.specData[0],
+                    {{QStringLiteral("fieldtype"), int(type)}});
+                scriptWidget->updateInputValue(data.specData[0], values);
+            }
+        } else if (data.edata.connected && data.edata.fieldtype == caSTRING
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0
+                   && data.edata.valueCount >= 0) {
+            const QStringList texts = String.split(QChar(27));
+            QVariantList values;
+            for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
+                values.append(texts.at(i));
+            }
+            scriptWidget->updateInputMetadata(data.specData[0],
+                {{QStringLiteral("fieldtype"), int(caScript::String)}});
+            scriptWidget->updateInputValue(data.specData[0], values);
+        } else if (data.edata.connected && data.edata.fieldtype == caCHAR
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            scriptWidget->updateInputMetadata(data.specData[0],
+                {{QStringLiteral("fieldtype"), int(caScript::Char)}});
+            scriptWidget->updateInputValue(data.specData[0], String);
+        } else if (data.edata.connected && data.edata.valueCount <= 1
+                   && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
+            QVariantMap metadata;
+            metadata.insert(QStringLiteral("units"), QString::fromLatin1(data.edata.units));
+            metadata.insert(QStringLiteral("precision"), int(data.edata.precision));
+            switch (data.edata.fieldtype) {
+            case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
+            case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
+            case caFLOAT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Float)); break;
+            case caENUM: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Enum)); break;
+            case caCHAR: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Char)); break;
+            case caLONG: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Long)); break;
+            case caDOUBLE: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Double)); break;
+            default: break;
+            }
+            if (data.edata.fieldtype == caENUM) {
+                const QStringList labels = data.edata.enumCount > 0
+                    ? String.split(QChar(27)).mid(0, data.edata.enumCount) : QStringList();
+                metadata.insert(QStringLiteral("enumStrings"), labels);
+                if (data.edata.ivalue >= 0 && data.edata.ivalue < labels.size()) {
+                    metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
+                }
+            }
+            scriptWidget->updateInputMetadata(data.specData[0], metadata);
+            if (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT) {
+                scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
+            } else if (data.edata.fieldtype == caINT || data.edata.fieldtype == caCHAR
+                       || data.edata.fieldtype == caENUM) {
+                scriptWidget->updateInputValue(data.specData[0], static_cast<int>(data.edata.ivalue));
+            } else if (data.edata.fieldtype == caLONG) {
+                scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));
+            } else if (data.edata.fieldtype == caSTRING) {
+                QMutex *dataMutex = static_cast<QMutex *>(data.mutex);
+                dataMutex->lock();
+                QByteArray bytes;
+                if (data.edata.dataB && data.edata.dataSize > 0) {
+                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), data.edata.dataSize);
+                    const int terminator = bytes.indexOf('\0');
+                    if (terminator >= 0) bytes.truncate(terminator);
+                }
+                dataMutex->unlock();
+                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
+                scriptWidget->updateInputValue(data.specData[0], String);
+            }
+        }
+
     } else if(caAlarmTree *alarmTree = qobject_cast<caAlarmTree *>(w)) {
         alarmTree->dataUpdate(String, data);
 
@@ -7296,6 +7453,111 @@ void CaQtDM_Lib::Callback_TextEntryChanged(const QString& text)
 /**
  * caAlarmTree asks for a write ($SEVRPV, $ACKPV, $HEARTBEATPV, $FORCEPV, config pv); all of them are monitored by the tree
  */
+void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
+{
+    caScript *widget = qobject_cast<caScript *>(sender());
+    if (!widget) return;
+    const auto warn = [this, widget](const QString &channel, const QString &reason) {
+        QByteArray message = tr("caScript %1: output %2 ignored: %3")
+            .arg(widget->objectName(), channel, reason).toLocal8Bit();
+        postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+    };
+    const auto targetName = [](QString channel) {
+        channel = channel.trimmed();
+        if (channel.endsWith(QStringLiteral(".VAL"))) channel.chop(4);
+        return channel;
+    };
+    QMap<QString, int> counts;
+    const auto outputs = widget->getOutputChannels();
+    for (const auto &output : outputs) ++counts[targetName(output.channel)];
+    for (const auto &output : outputs) {
+        const QString key = output.alias.isEmpty() ? output.channel : output.alias;
+        if (!values.contains(key)) continue;
+        const QString channel = targetName(output.channel);
+        if (counts.value(channel) > 1) {
+            warn(channel, tr("duplicate output target"));
+            continue;
+        }
+        if (!channel.startsWith(QStringLiteral("internal://"))) {
+            warn(channel, tr("only existing internal channels are supported"));
+            continue;
+        }
+        const QString pv = channel.mid(11);
+        knobData *existing = mutexKnobDataP->getMutexKnobDataPV(widget, pv);
+        if (!existing || QString::fromLatin1(existing->pluginName) != QStringLiteral("internal")) {
+            warn(channel, tr("target is not defined"));
+            continue;
+        }
+        knobData target = mutexKnobDataP->GetMutexKnobData(existing->index);
+        if (!target.edata.connected || !target.edata.accessW || target.edata.nelm != 1
+            || target.edata.dimCount != 0) {
+            warn(channel, tr("target must be a connected writable scalar"));
+            continue;
+        }
+        const QVariant value = values.value(key);
+        QByteArray text;
+        double realValue = 0.0;
+        int32_t integerValue = 0;
+        if (target.edata.fieldtype == caSTRING) {
+            if (!value.canConvert<QString>()) {
+                warn(channel, tr("value cannot be converted to a string"));
+                continue;
+            }
+            const QString string = value.toString();
+            text = string.toLatin1();
+            if (string.contains(QChar(0)) || QString::fromLatin1(text) != string) {
+                warn(channel, tr("value cannot be represented by the internal Latin-1 string channel"));
+                continue;
+            }
+        } else {
+            bool ok = false;
+            realValue = value.toDouble(&ok);
+            if (!ok || !qIsFinite(realValue)) {
+                warn(channel, tr("value must be a finite number"));
+                continue;
+            }
+            if (target.edata.fieldtype == caFLOAT) {
+                if (qAbs(realValue) > std::numeric_limits<float>::max()) {
+                    warn(channel, tr("value exceeds the float range"));
+                    continue;
+                }
+            } else if (target.edata.fieldtype != caDOUBLE) {
+                double minimum;
+                double maximum;
+                switch (target.edata.fieldtype) {
+                case caINT: minimum = -32768; maximum = 32767; break;
+                case caLONG: minimum = -2147483648.0; maximum = 2147483647; break;
+                case caCHAR: minimum = 0; maximum = 255; break;
+                case caENUM:
+                    minimum = 0;
+                    maximum = target.edata.enumCount > 0 ? target.edata.enumCount - 1 : 65535;
+                    break;
+                default:
+                    warn(channel, tr("unsupported target type"));
+                    continue;
+                }
+                const double rounded = round(realValue);
+                if (rounded < minimum || rounded > maximum) {
+                    warn(channel, tr("value exceeds the target range"));
+                    continue;
+                }
+                integerValue = static_cast<int32_t>(llround(realValue));
+                realValue = integerValue;
+            }
+        }
+        ControlsInterface *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+        if (!plugin) {
+            warn(channel, tr("internal plugin is unavailable"));
+            continue;
+        }
+        QByteArray object = widget->objectName().toLatin1();
+        char error[SMALL_STRING_LENGTH] = {};
+        if (!plugin->pvSetValue(&target, realValue, integerValue, text.data(), object.data(), error, 0)) {
+            warn(channel, tr("internal plugin rejected the write"));
+        }
+    }
+}
+
 void CaQtDM_Lib::Callback_AlarmTreeWrite(const QString &pv, const QString &text, bool asString)
 {
     QWidget *w = qobject_cast<QWidget *>(sender());

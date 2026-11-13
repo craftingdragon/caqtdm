@@ -58,6 +58,30 @@ private slots:
     void computeNumericMaxMinPrecIgnoresChannelInUserMode();
     void computeNumericMaxMinPrecHonoursMaxChannelPrecision();
     void computeNumericMaxMinPrecUpdatesWhenChannelChanges();
+    void scriptReceivesMonitoredScalarThroughAlias();
+    void scriptReceivesMonitoredShortThroughAlias_data();
+    void scriptReceivesMonitoredShortThroughAlias();
+    void scriptReceivesMonitoredLongThroughAlias_data();
+    void scriptReceivesMonitoredLongThroughAlias();
+    void scriptReceivesMonitoredStringThroughAlias_data();
+    void scriptReceivesMonitoredStringThroughAlias();
+    void scriptReceivesOriginalStringBytes();
+    void scriptReceivesTypedScalar_data();
+    void scriptReceivesTypedScalar();
+    void scriptWritesExistingScalar_data();
+    void scriptWritesExistingScalar();
+    void scriptSkipsInvalidOutputs_data();
+    void scriptSkipsInvalidOutputs();
+    void scriptPublishesScaledInput();
+    void scriptReceivesNumericWaveform_data();
+    void scriptReceivesNumericWaveform();
+    void scriptReceivesCharWaveform_data();
+    void scriptReceivesCharWaveform();
+    void scriptReceivesStringWaveform_data();
+    void scriptReceivesStringWaveform();
+    void scriptReceivesMatrix_data();
+    void scriptReceivesMatrix();
+    void scriptReceivesUnitsAndPrecision();
 
 private:
     FakeFileOpenWindow *m_fakeFileOpenWindow;
