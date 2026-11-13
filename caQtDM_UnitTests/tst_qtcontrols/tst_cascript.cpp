@@ -25,6 +25,7 @@
 
 #include "tst_cascript.h"
 #include "cascript.h"
+#include "cascriptdialog.h"
 
 #include <QJsonDocument>
 #include <QFile>
@@ -35,6 +36,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTableWidget>
 #include <QVBoxLayout>
 #include <memory>
 
@@ -516,6 +518,44 @@ void TestCaScript::waveformSnapshotUsesJavaScriptArray()
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt()
+{
+    QFETCH(QString, property);
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("epics3://source"), QStringLiteral("source")},
+                             {QStringLiteral("internal://factor"), QString()}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")},
+                              {QStringLiteral("internal://other"), QString()}});
+    const QString originalInputs = widget.getChannels();
+    const QString originalOutputs = widget.getOutputChannelsJson();
+    const auto expected = property == QStringLiteral("channels")
+        ? widget.getInputChannels() : widget.getOutputChannels();
+
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QVERIFY(table);
+    QCOMPARE(table->columnCount(), 2);
+    QCOMPARE(table->rowCount(), expected.size());
+    for (int row = 0; row < expected.size(); ++row) {
+        QVERIFY(table->item(row, 0));
+        QVERIFY(table->item(row, 1));
+        QCOMPARE(table->item(row, 0)->text(), expected.at(row).channel);
+        QCOMPARE(table->item(row, 1)->text(), expected.at(row).alias);
+    }
+    table->item(0, 0)->setText(QStringLiteral("internal://changed"));
+    table->item(0, 1)->setText(QStringLiteral("changedAlias"));
+    dialog.reject();
+    QCOMPARE(widget.getChannels(), originalInputs);
+    QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);
 }
 
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
