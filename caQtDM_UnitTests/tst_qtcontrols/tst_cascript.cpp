@@ -131,6 +131,14 @@ void TestCaScript::inputConfigurationErrorsReflectCurrentInputs()
     QCOMPARE(errors.size(), 1);
     QVERIFY(errors.first().contains(QStringLiteral("score")));
 
+    QSignalSpy diagnostics(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(diagnostics.count(), 1);
+    QVERIFY(diagnostics.first().first().toString().contains("score"));
+
     widget.setInputChannels({
         {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
         {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
@@ -985,4 +993,59 @@ void TestCaScript::closingBusyWidgetLeavesOtherWidgetResponsive()
     other.executeScript();
     QTRY_COMPARE(finished.count(), 2);
     QVERIFY(finished.last().first().toBool());
+}
+
+void TestCaScript::consoleMessagesPreserveLevelsAndSuccess()
+{
+    caScript widget;
+    widget.setScript("console.log('Grüezi', 42); console.warn('careful'); console.error('diagnostic');");
+    QSignalSpy info(&widget, SIGNAL(scriptInfo(QString)));
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(info.isValid());
+    for (int run = 1; run <= 2; ++run) {
+        widget.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+        QCOMPARE(info.count(), run);
+        QCOMPARE(warnings.count(), run);
+        QCOMPARE(errors.count(), run);
+        QCOMPARE(info.last().first().toString(), QStringLiteral("Grüezi 42"));
+        QCOMPARE(warnings.last().first().toString(), QStringLiteral("careful"));
+        QCOMPARE(errors.last().first().toString(), QStringLiteral("diagnostic"));
+    }
+}
+
+void TestCaScript::scriptDiagnostics_data()
+{
+    QTest::addColumn<QString>("script");
+    QTest::addColumn<QString>("expected");
+    QTest::addColumn<bool>("lineTwo");
+    QTest::newRow("runtime") << QStringLiteral("var x = 1;\nthrow new Error('meaningful failure');")
+                            << QStringLiteral("meaningful failure") << true;
+    QTest::newRow("syntax") << QStringLiteral("const broken = ;") << QStringLiteral("SyntaxError") << false;
+    QTest::newRow("primitive") << QStringLiteral("throw 'primitive failure';") << QStringLiteral("primitive failure") << false;
+    QTest::newRow("conversion") << QStringLiteral("inputs.a.convert(EpicsType.Short);")
+                               << QStringLiteral("RangeError") << false;
+}
+
+void TestCaScript::scriptDiagnostics()
+{
+    QFETCH(QString, script);
+    QFETCH(QString, expected);
+    QFETCH(bool, lineTwo);
+    caScript widget;
+    widget.setInputChannels({{"source", "a"}});
+    widget.updateInputValue(0, 1e100);
+    widget.setScript(script);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(errors.count(), 1);
+    const QString message = errors.first().first().toString();
+    QVERIFY2(message.contains(expected), qPrintable(message));
+    if (lineTwo) QVERIFY2(message.contains("line 2"), qPrintable(message));
 }

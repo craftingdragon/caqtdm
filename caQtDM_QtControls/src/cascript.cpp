@@ -105,11 +105,32 @@ QVariantMap scalarConversion(const QVariant &value, caScript::EpicsType type)
 }
 }
 
+class CaScriptConsole : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit CaScriptConsole(QObject *parent) : QObject(parent) {}
+
+public slots:
+    void log(const QString &text) { emit message(QtInfoMsg, text); }
+    void warn(const QString &text) { emit message(QtWarningMsg, text); }
+    void error(const QString &text) { emit message(QtCriticalMsg, text); }
+
+signals:
+    void message(int level, const QString &text);
+};
+
 class CaScriptWorker : public QObject
 {
     Q_OBJECT
 
 public:
+    CaScriptWorker() : m_console(new CaScriptConsole(this))
+    {
+        connect(m_console, &CaScriptConsole::message, this, &CaScriptWorker::message);
+    }
+
     void prepareExecution()
     {
         QMutexLocker lock(&m_mutex);
@@ -142,6 +163,13 @@ public slots:
             if (!m_engine) m_engine = new QJSEngine(this);
             m_engine->setInterrupted(m_interruptRequested);
         }
+        QJSValue consoleFactory = m_engine->evaluate(QStringLiteral(
+            "(function(sink) { function text(args) { return Array.prototype.map.call(args, String).join(' '); }"
+            "return {log: function() { sink.log(text(arguments)); },"
+            "warn: function() { sink.warn(text(arguments)); },"
+            "error: function() { sink.error(text(arguments)); }}; })"));
+        m_engine->globalObject().setProperty(QStringLiteral("console"),
+            consoleFactory.call({m_engine->newQObject(m_console)}));
         QJSValue types = m_engine->newObject();
         const QMetaEnum typeEnum = QMetaEnum::fromType<caScript::EpicsType>();
         for (int i = 0; i < typeEnum.keyCount(); ++i) {
@@ -203,17 +231,30 @@ public slots:
                     "if (channel && Object.prototype.hasOwnProperty.call(channel, 'value'))\n"
                     "values[key] = channel.value; }\n"
                     "return {success: true, values: values};\n"
-                    "} catch (error) { return {success: false}; } })()"),
+                    "} catch (error) { var message = 'JavaScript exception'; var line = 0;\n"
+                    "try { message = String(error);\n"
+                    "if (error != null && typeof error.lineNumber === 'number') line = error.lineNumber;\n"
+                    "} catch (ignored) {}\n"
+                    "return {success: false, message: message, lineNumber: line}; } })()"),
             QStringLiteral("caScript"), 0);
         const bool success = !result.isError() && result.property(QStringLiteral("success")).toBool();
+        QString diagnostic;
+        if (!success) {
+            diagnostic = result.isError() ? result.toString() : result.property(QStringLiteral("message")).toString();
+            if (diagnostic.isEmpty()) diagnostic = tr("JavaScript execution failed.");
+            const int line = result.property(QStringLiteral("lineNumber")).toInt();
+            if (line > 0) diagnostic = tr("%1 (line %2)").arg(diagnostic).arg(line);
+        }
         emit finished(success, success ? result.property(QStringLiteral("values")).toVariant().toMap()
-                                       : QVariantMap());
+                                       : QVariantMap(), diagnostic);
     }
 
 signals:
-    void finished(bool success, const QVariantMap &values);
+    void finished(bool success, const QVariantMap &values, const QString &diagnostic);
+    void message(int level, const QString &text);
 
 private:
+    CaScriptConsole *m_console;
     QMutex m_mutex;
     QJSEngine *m_engine = nullptr;
     bool m_stopping = false;
@@ -258,9 +299,12 @@ void caScript::executeScript()
         emit scriptWarning(tr("Trigger ignored: script is already running."));
         return;
     }
-    if (!inputConfigurationErrors().isEmpty() || !outputConfigurationErrors().isEmpty()) {
+    const QStringList errors = inputConfigurationErrors() + outputConfigurationErrors()
+                               + triggerConfigurationErrors();
+    if (!errors.isEmpty()) {
         m_running = true;
-        QTimer::singleShot(0, this, [this]() {
+        QTimer::singleShot(0, this, [this, errors]() {
+            for (const QString &error : errors) emit scriptError(error);
             m_running = false;
             emit scriptFinished(false);
         });
@@ -279,7 +323,13 @@ void caScript::executeScript()
         m_worker = new CaScriptWorker;
         m_worker->moveToThread(m_executionThread);
         connect(m_executionThread, &QThread::finished, m_worker, &QObject::deleteLater);
-        connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values) {
+        connect(m_worker, &CaScriptWorker::message, this, [this](int level, const QString &text) {
+            if (level == QtWarningMsg) emit scriptWarning(text);
+            else if (level == QtCriticalMsg) emit scriptError(text);
+            else emit scriptInfo(text);
+        });
+        connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values,
+                                                              const QString &diagnostic) {
             m_warningTimer->stop();
             m_timeoutTimer->stop();
             if (m_timedOut) {
@@ -291,6 +341,7 @@ void caScript::executeScript()
                 }
             } else {
                 m_consecutiveTimeouts = 0;
+                if (!success) emit scriptError(diagnostic);
             }
             m_running = false;
             if (success && !values.isEmpty()) emit outputValuesReady(values);
@@ -366,7 +417,7 @@ void caScript::refreshTriggers()
     m_triggerTimer->stop();
     if (m_executionDisabled) return;
     const QStringList errors = triggerConfigurationErrors();
-    for (const QString &error : errors) emit scriptWarning(error);
+    for (const QString &error : errors) emit scriptError(error);
     if (errors.isEmpty() && m_triggerMode == Periodic) {
         m_triggerTimer->start(m_triggerInterval);
     }

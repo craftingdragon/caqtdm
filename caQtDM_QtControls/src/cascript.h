@@ -107,6 +107,7 @@ public slots:
 
 signals:
     void inputValueUpdated(int index);
+    void scriptInfo(const QString &message);
     void scriptWarning(const QString &message);
     void scriptError(const QString &message);
     void scriptFinished(bool success);

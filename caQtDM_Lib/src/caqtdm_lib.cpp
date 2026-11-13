@@ -3595,8 +3595,8 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
             scriptWidget->setProperty("MonitorList", integerList);
             for (const QString &error : errors) {
                 const QString message = tr("caScript %1: %2").arg(w1->objectName(), error);
-                qCWarning(caQtDMLibLog).noquote() << message;
-                postMessage(QtWarningMsg, (char*) qasc(message));
+                QByteArray text = message.toLocal8Bit();
+                postMessageAndLog(QtCriticalMsg, text.data(), caQtDMLibLog);
             }
             return;
         }
@@ -3616,6 +3616,10 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
         scriptWidget->setOutputChannels(outputs);
         connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
+        connect(scriptWidget, &caScript::scriptInfo, this, [this, scriptWidget](const QString &info) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), info).toLocal8Bit();
+            postMessageAndLog(QtInfoMsg, message.data(), caQtDMLibLog);
+        });
         connect(scriptWidget, &caScript::scriptWarning, this, [this, scriptWidget](const QString &warning) {
             QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
             postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);

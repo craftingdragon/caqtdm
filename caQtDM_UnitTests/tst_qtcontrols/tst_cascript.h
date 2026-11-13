@@ -51,6 +51,9 @@ private slots:
     void busyMonitorTriggersAreWarnedAndNotQueued();
     void timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns();
     void slowSuccessfulScriptOnlyWarns();
+    void consoleMessagesPreserveLevelsAndSuccess();
+    void scriptDiagnostics_data();
+    void scriptDiagnostics();
     void closingBusyWidgetLeavesOtherWidgetResponsive();
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();

@@ -30,6 +30,7 @@
 #include <canumeric.h>
 #include <caspinbox.h>
 #include <cascript.h>
+#include <MessageWindow.h>
 #include <gensoftpv.h>
 #include <QSignalSpy>
 #include <QJsonDocument>
@@ -1493,4 +1494,35 @@ void TestCaQtDM_Lib::computeNumericMaxMinPrecUpdatesWhenChannelChanges()
                                              "T_Numeric_Live");
     checkWidgetPicksUpFieldWrite<caSpinbox>(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                              "T_Spinbox_Live");
+}
+
+void TestCaQtDM_Lib::scriptMessagesReachLogAndMessageWindow()
+{
+    MessageWindow *window = new MessageWindow(m_fakeFileOpenWindow);
+    m_caQtDM_Lib->messageWindowP = window;
+    caScript script(m_parentAS);
+    script.setObjectName(QStringLiteral("loggingTest"));
+    script.setScript("console.log('info-marker'); console.warn('warning-marker'); console.error('error-marker'); throw new Error('exception-marker');");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QTest::ignoreMessage(QtInfoMsg, QRegularExpression("caScript loggingTest: info-marker"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript loggingTest: warning-marker"));
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript loggingTest: error-marker"));
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript loggingTest: .*exception-marker"));
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QTRY_VERIFY(window->getMessageBoxContents().contains("exception-marker"));
+    const QString text = window->getMessageBoxContents();
+    QVERIFY(text.contains("info-marker"));
+    QVERIFY(text.contains("warning-marker"));
+    QVERIFY(text.contains("error-marker"));
+
+    window->clearText();
+    caScript invalid(m_parentAS);
+    invalid.setObjectName(QStringLiteral("invalidConfiguration"));
+    invalid.setInputChannels({{"first", "duplicate"}, {"second", "duplicate"}});
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript invalidConfiguration: Duplicate input key"));
+    m_caQtDM_Lib->HandleWidget(&invalid, "", false, false);
+    QTRY_VERIFY(window->getMessageBoxContents().contains("Duplicate input key"));
 }

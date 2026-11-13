@@ -72,6 +72,7 @@ private slots:
     void scriptWritesExistingScalar();
     void scriptSkipsInvalidOutputs_data();
     void scriptSkipsInvalidOutputs();
+    void scriptMessagesReachLogAndMessageWindow();
     void scriptPublishesScaledInput_data();
     void scriptPublishesScaledInput();
     void scriptReceivesNumericWaveform_data();
