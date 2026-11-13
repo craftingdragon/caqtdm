@@ -6744,6 +6744,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         } else if (data.edata.connected && data.edata.valueCount <= 1
                    && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
             QVariantMap metadata;
+            metadata.insert(QStringLiteral("units"), QString::fromLatin1(data.edata.units));
+            metadata.insert(QStringLiteral("precision"), int(data.edata.precision));
             switch (data.edata.fieldtype) {
             case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
             case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
