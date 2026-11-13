@@ -269,6 +269,9 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     const QString script = QStringLiteral("// Grüezi <>&\noutputs.result.value = inputs.score.value;\n");
     scriptWidget->setScript(script);
     scriptWidget->setExecutionMode(caScript::DataDriven);
+    scriptWidget->setTriggerMode(caScript::SelectedInput);
+    scriptWidget->setTriggerInput(QStringLiteral("score"));
+    scriptWidget->setTriggerInterval(250);
     const QList<caScript::InputChannel> inputs = {
         {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
         {QStringLiteral("internal://scriptFactor"), QString()}
@@ -291,6 +294,9 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     QVERIFY(restored != nullptr);
     QCOMPARE(restored->getScript(), script);
     QCOMPARE(restored->getExecutionMode(), caScript::DataDriven);
+    QCOMPARE(restored->getTriggerMode(), caScript::SelectedInput);
+    QCOMPARE(restored->getTriggerInput(), QStringLiteral("score"));
+    QCOMPARE(restored->getTriggerInterval(), 250);
     QCOMPARE(restored->getOutputChannelsJson(), scriptWidget->getOutputChannelsJson());
     const QList<caScript::InputChannel> restoredInputs = restored->getInputChannels();
     QCOMPARE(restoredInputs.size(), inputs.size());
@@ -784,4 +790,108 @@ void TestCaScript::constantModeAllowsMissingInputs()
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 3);
     QVERIFY(finished.last().first().toBool());
+}
+
+void TestCaScript::monitorTriggerPolicies_data()
+{
+    QTest::addColumn<int>("trigger");
+    QTest::newRow("any-input") << 1;
+    QTest::newRow("selected-input") << 2;
+    QTest::newRow("minimum-interval") << 3;
+}
+
+void TestCaScript::monitorTriggerPolicies()
+{
+    QFETCH(int, trigger);
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", trigger));
+    QVERIFY(widget.setProperty("triggerInput", "b"));
+    QVERIFY(widget.setProperty("triggerInterval", 1000));
+    widget.setExecutionMode(caScript::DataDriven);
+    widget.setInputChannels({{"first", "a"}, {"second", "b"}});
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("outputs.result.value = inputs.a.value + inputs.b.value;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    widget.updateInputMetadata(0, {{"connected", true}});
+    widget.updateInputValue(0, 1);
+    widget.updateInputMetadata(1, {{"connected", true}});
+    widget.updateInputValue(1, 2);
+    QVERIFY(finished.isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    widget.updateInputValue(0, 10);
+    int expected = trigger == 2 ? 0 : 1;
+    QTRY_COMPARE(finished.count(), expected);
+    widget.updateInputValue(1, 20);
+    if (trigger != 3) ++expected;
+    QTRY_COMPARE(finished.count(), expected);
+    if (trigger == 3) {
+        QTest::qWait(1050);
+        QCOMPARE(finished.count(), expected); // No delayed replay, but the cache has the latest b.
+        widget.updateInputValue(0, 11);
+        ++expected;
+        QTRY_COMPARE(finished.count(), expected);
+    }
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), trigger == 3 ? 31.0 : 30.0);
+}
+
+void TestCaScript::periodicTriggerRespectsMode_data()
+{
+    QTest::addColumn<int>("mode");
+    QTest::newRow("constant-without-data") << int(caScript::Constant);
+    QTest::newRow("data-driven-waits") << int(caScript::DataDriven);
+}
+
+void TestCaScript::periodicTriggerRespectsMode()
+{
+    QFETCH(int, mode);
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", 4));
+    QVERIFY(widget.setProperty("triggerInterval", 30));
+    widget.setExecutionMode(static_cast<caScript::ExecutionMode>(mode));
+    widget.setInputChannels({{"source", "a"}});
+    widget.setScript("if ('value' in inputs.a && inputs.a.value !== 42) throw 'bad value';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QTest::qWait(60);
+    QVERIFY(finished.isEmpty()); // Designer construction must not start timers.
+    connect(&widget, &caScript::scriptFinished, &widget, [&widget]() {
+        widget.setProperty("triggerMode", 0);
+    });
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    if (mode == caScript::DataDriven) {
+        QTest::qWait(90);
+        QVERIFY(finished.isEmpty());
+        widget.updateInputMetadata(0, {{"connected", true}});
+        widget.updateInputValue(0, 42);
+        QVERIFY(finished.isEmpty());
+    }
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QTest::qWait(60);
+    QCOMPARE(finished.count(), 1);
+}
+
+void TestCaScript::busyMonitorTriggersAreWarnedAndNotQueued()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", 1));
+    widget.setInputChannels({{"source", "a"}});
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("var until = Date.now() + 100; while (Date.now() < until) {} outputs.result.value = inputs.a.value;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, SIGNAL(scriptWarning(QString)));
+    QVERIFY(warnings.isValid());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    widget.updateInputValue(0, 10);
+    widget.updateInputValue(0, 20);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("running"));
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), 10.0);
+    QTest::qWait(150);
+    QCOMPARE(finished.count(), 1);
+    widget.updateInputValue(0, 30);
+    QTRY_COMPARE(finished.count(), 2);
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), 30.0);
 }

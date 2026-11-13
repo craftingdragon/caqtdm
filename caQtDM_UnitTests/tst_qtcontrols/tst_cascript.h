@@ -44,6 +44,11 @@ private slots:
     void scriptAndInputsSurviveUiFileRoundTrip();
     void executionModesRespectConnectionFreshness();
     void constantModeAllowsMissingInputs();
+    void monitorTriggerPolicies_data();
+    void monitorTriggerPolicies();
+    void periodicTriggerRespectsMode_data();
+    void periodicTriggerRespectsMode();
+    void busyMonitorTriggersAreWarnedAndNotQueued();
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();
     void thrownStringIsReportedAsFailure();

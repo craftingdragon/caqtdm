@@ -358,8 +358,16 @@ void TestCaQtDM_Lib::scriptSkipsInvalidOutputs()
     QVERIFY(!m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("missing")));
 }
 
+void TestCaQtDM_Lib::scriptPublishesScaledInput_data()
+{
+    QTest::addColumn<bool>("useMonitor");
+    QTest::newRow("manual") << false;
+    QTest::newRow("selected-monitor") << true;
+}
+
 void TestCaQtDM_Lib::scriptPublishesScaledInput()
 {
+    QFETCH(bool, useMonitor);
     genSoftPV *score = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                                 QStringLiteral("scriptScore"), "", "");
     genSoftPV *factor = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
@@ -373,24 +381,29 @@ void TestCaQtDM_Lib::scriptPublishesScaledInput()
                              {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}});
     script.setOutputChannels({{QStringLiteral("internal://scriptScaledScore"), QStringLiteral("result")}});
     script.setScript(QStringLiteral("outputs.result.value = inputs.score.value * inputs.factor.value;"));
+    if (useMonitor) {
+        script.setExecutionMode(caScript::DataDriven);
+        script.setTriggerMode(caScript::SelectedInput);
+        script.setTriggerInput(QStringLiteral("factor"));
+    }
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
     QSignalSpy finished(&script, &caScript::scriptFinished);
     const auto run = [&](double input, double scale, double expected, int count) {
         writeInternalField(m_internalPlugin, QStringLiteral("scriptScore"), QStringLiteral("VAL"), input);
         writeInternalField(m_internalPlugin, QStringLiteral("scriptFactor"), QStringLiteral("VAL"), scale);
-        script.executeScript();
+        if (!useMonitor) script.executeScript();
         QTRY_COMPARE(finished.count(), count);
         QVERIFY(finished.last().first().toBool());
         QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, expected);
     };
     run(200, 2, 400, 1);
-    run(300, 2, 600, 2);
-    run(300, 3, 900, 3);
+    run(300, 3, 900, 2);
+    run(400, 4, 1600, 3);
     script.setScript(QStringLiteral("outputs.result.value = 123; throw new Error('Discard');"));
     script.executeScript();
     QTRY_COMPARE(finished.count(), 4);
     QVERIFY(!finished.last().first().toBool());
-    QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 900.0);
+    QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 1600.0);
 }
 
 void TestCaQtDM_Lib::scriptReceivesNumericWaveform_data()

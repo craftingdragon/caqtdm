@@ -27,6 +27,7 @@
 #define CASCRIPT_H
 
 #include <QList>
+#include <QElapsedTimer>
 #include <QByteArray>
 #include <QMap>
 #include <QSet>
@@ -37,17 +38,24 @@
 
 class CaScriptWorker;
 class QThread;
+class QTimer;
 
 class QTCON_EXPORT caScript : public QWidget
 {
     Q_OBJECT
 
+    Q_PROPERTY(TriggerMode triggerMode READ getTriggerMode WRITE setTriggerMode DESIGNABLE true)
+    Q_PROPERTY(QString triggerInput READ getTriggerInput WRITE setTriggerInput DESIGNABLE true)
+    Q_PROPERTY(int triggerInterval READ getTriggerInterval WRITE setTriggerInterval DESIGNABLE true)
     Q_PROPERTY(ExecutionMode executionMode READ getExecutionMode WRITE setExecutionMode DESIGNABLE true)
     Q_PROPERTY(QString script READ getScript WRITE setScript)
     Q_PROPERTY(QString channels READ getChannels WRITE setChannels)
     Q_PROPERTY(QString outputChannels READ getOutputChannelsJson WRITE setOutputChannelsJson)
 
 public:
+    enum TriggerMode { Manual, AnyInput, SelectedInput, MinimumInterval, Periodic };
+    Q_ENUM(TriggerMode)
+
     enum ExecutionMode { Constant, DataDriven };
     Q_ENUM(ExecutionMode)
 
@@ -62,6 +70,14 @@ public:
 
     explicit caScript(QWidget *parent = nullptr);
     ~caScript() override;
+
+    TriggerMode getTriggerMode() const;
+    void setTriggerMode(TriggerMode mode);
+    QString getTriggerInput() const;
+    void setTriggerInput(const QString &input);
+    int getTriggerInterval() const;
+    void setTriggerInterval(int milliseconds);
+    QStringList triggerConfigurationErrors() const;
 
     ExecutionMode getExecutionMode() const;
     void setExecutionMode(ExecutionMode mode);
@@ -83,16 +99,28 @@ public:
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
 public slots:
+    void startTriggers();
     void executeScript();
     void updateInputValue(int index, const QVariant &value);
     void updateInputRawBytes(int index, const QByteArray &bytes);
     void updateInputMetadata(int index, const QVariantMap &metadata);
 
 signals:
+    void inputValueUpdated(int index);
+    void scriptWarning(const QString &message);
     void scriptFinished(bool success);
     void outputValuesReady(const QVariantMap &values);
 
 private:
+    void handleInputTrigger(int index);
+    void refreshTriggers();
+
+    TriggerMode m_triggerMode = Manual;
+    QString m_triggerInput;
+    int m_triggerInterval = 100;
+    bool m_triggersStarted = false;
+    QTimer *m_triggerTimer;
+    QElapsedTimer m_lastExecution;
     ExecutionMode m_executionMode = Constant;
     QSet<int> m_readyInputs;
     QString m_script;

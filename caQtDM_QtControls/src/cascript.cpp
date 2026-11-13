@@ -204,8 +204,11 @@ private:
     bool m_stopping = false;
 };
 
-caScript::caScript(QWidget *parent) : QWidget(parent)
-{}
+caScript::caScript(QWidget *parent) : QWidget(parent), m_triggerTimer(new QTimer(this))
+{
+    connect(m_triggerTimer, &QTimer::timeout, this, &caScript::executeScript);
+    connect(this, &caScript::inputValueUpdated, this, &caScript::handleInputTrigger);
+}
 
 caScript::~caScript()
 {
@@ -218,7 +221,10 @@ caScript::~caScript()
 
 void caScript::executeScript()
 {
-    if (m_running) return;
+    if (m_running) {
+        emit scriptWarning(tr("Trigger ignored: script is already running."));
+        return;
+    }
     if (!inputConfigurationErrors().isEmpty() || !outputConfigurationErrors().isEmpty()) {
         m_running = true;
         QTimer::singleShot(0, this, [this]() {
@@ -263,6 +269,7 @@ void caScript::executeScript()
     for (const InputChannel &output : m_outputChannels) {
         outputs.insert(output.alias.isEmpty() ? output.channel : output.alias, QVariantMap());
     }
+    m_lastExecution.start();
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
                               Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot),
                               Q_ARG(QVariantMap, outputs));
@@ -277,6 +284,7 @@ void caScript::updateInputValue(int index, const QVariant &value)
         } else {
             m_readyInputs.remove(index);
         }
+        emit inputValueUpdated(index);
     }
 }
 
@@ -295,6 +303,91 @@ void caScript::updateInputMetadata(int index, const QVariantMap &metadata)
             m_readyInputs.remove(index);
         }
     }
+}
+
+void caScript::startTriggers()
+{
+    m_triggersStarted = true;
+    refreshTriggers();
+}
+
+void caScript::refreshTriggers()
+{
+    if (!m_triggersStarted) return;
+    m_triggerTimer->stop();
+    const QStringList errors = triggerConfigurationErrors();
+    for (const QString &error : errors) emit scriptWarning(error);
+    if (errors.isEmpty() && m_triggerMode == Periodic) {
+        m_triggerTimer->start(m_triggerInterval);
+    }
+}
+
+void caScript::handleInputTrigger(int index)
+{
+    if (!m_triggersStarted || !triggerConfigurationErrors().isEmpty()) return;
+    switch (m_triggerMode) {
+    case AnyInput:
+        break;
+    case SelectedInput: {
+        const InputChannel &input = m_inputChannels.at(index);
+        if ((input.alias.isEmpty() ? input.channel : input.alias) != m_triggerInput) return;
+        break;
+    }
+    case MinimumInterval:
+        if (!m_running && m_lastExecution.isValid() && m_lastExecution.elapsed() < m_triggerInterval) return;
+        break;
+    default:
+        return;
+    }
+    executeScript();
+}
+
+caScript::TriggerMode caScript::getTriggerMode() const
+{
+    return m_triggerMode;
+}
+
+void caScript::setTriggerMode(TriggerMode mode)
+{
+    m_triggerMode = mode;
+    m_lastExecution.invalidate();
+    refreshTriggers();
+}
+
+QString caScript::getTriggerInput() const
+{
+    return m_triggerInput;
+}
+
+void caScript::setTriggerInput(const QString &input)
+{
+    m_triggerInput = input;
+    refreshTriggers();
+}
+
+int caScript::getTriggerInterval() const
+{
+    return m_triggerInterval;
+}
+
+void caScript::setTriggerInterval(int milliseconds)
+{
+    m_triggerInterval = milliseconds;
+    refreshTriggers();
+}
+
+QStringList caScript::triggerConfigurationErrors() const
+{
+    if ((m_triggerMode == Periodic || m_triggerMode == MinimumInterval) && m_triggerInterval <= 0) {
+        return {tr("Trigger interval must be greater than zero milliseconds.")};
+    }
+    if (m_triggerMode == SelectedInput) {
+        for (const InputChannel &input : m_inputChannels) {
+            if ((input.alias.isEmpty() ? input.channel : input.alias) == m_triggerInput) return {};
+        }
+        return {tr("Trigger input must match a configured input alias or unaliased channel name.")};
+    }
+    return {};
 }
 
 caScript::ExecutionMode caScript::getExecutionMode() const
@@ -372,6 +465,7 @@ void caScript::setInputChannels(const QList<InputChannel> &inputs)
     m_inputRawBytes.clear();
     m_inputMetadata.clear();
     m_inputJsonError.clear();
+    refreshTriggers();
 }
 
 QStringList caScript::inputConfigurationErrors() const

@@ -3588,7 +3588,8 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         scriptWidget->setProperty("ObjectType", caScript_Widget);
         scriptWidget->setProperty("Taken", true);
         const QStringList errors = scriptWidget->inputConfigurationErrors()
-                                   + scriptWidget->outputConfigurationErrors();
+                                   + scriptWidget->outputConfigurationErrors()
+                                   + scriptWidget->triggerConfigurationErrors();
         if (!errors.isEmpty()) {
             integerList.append(0);
             scriptWidget->setProperty("MonitorList", integerList);
@@ -3615,6 +3616,11 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
         scriptWidget->setOutputChannels(outputs);
         connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
+        connect(scriptWidget, &caScript::scriptWarning, this, [this, scriptWidget](const QString &warning) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
+            postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+        });
+        scriptWidget->startTriggers();
 
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
 
