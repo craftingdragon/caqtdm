@@ -37,6 +37,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QTableWidget>
+#include <QPushButton>
 #include <QVBoxLayout>
 #include <memory>
 
@@ -553,6 +554,50 @@ void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt()
     }
     table->item(0, 0)->setText(QStringLiteral("internal://changed"));
     table->item(0, 1)->setText(QStringLiteral("changedAlias"));
+    dialog.reject();
+    QCOMPARE(widget.getChannels(), originalInputs);
+    QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);
+}
+
+void TestCaScript::channelDialogAddsAndRemovesRows_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogAddsAndRemovesRows()
+{
+    QFETCH(QString, property);
+    caScript widget;
+    QVERIFY(widget.setProperty(property.toLatin1().constData(), QStringLiteral(
+        "[{\"channel\":\"internal://first\",\"alias\":\"first\"},"
+        "{\"channel\":\"internal://second\",\"alias\":\"\"}]")));
+    const QString originalInputs = widget.getChannels();
+    const QString originalOutputs = widget.getOutputChannelsJson();
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QPushButton *add = dialog.findChild<QPushButton *>(QStringLiteral("addChannel"));
+    QPushButton *remove = dialog.findChild<QPushButton *>(QStringLiteral("removeChannel"));
+    QVERIFY(table);
+    QVERIFY(add);
+    QVERIFY(remove);
+
+    add->click();
+    QCOMPARE(table->rowCount(), 3);
+    QVERIFY(table->item(2, 0));
+    QVERIFY(table->item(2, 1));
+    QVERIFY(table->item(2, 0)->text().isEmpty());
+    QVERIFY(table->item(2, 1)->text().isEmpty());
+    table->item(2, 0)->setText(QStringLiteral("internal://third"));
+    table->item(2, 1)->setText(QStringLiteral("third"));
+    table->selectRow(0);
+    remove->click();
+    QCOMPARE(table->rowCount(), 2);
+    QCOMPARE(table->item(0, 0)->text(), QStringLiteral("internal://second"));
+    QVERIFY(table->item(0, 1)->text().isEmpty());
+    QCOMPARE(table->item(1, 0)->text(), QStringLiteral("internal://third"));
+    QCOMPARE(table->item(1, 1)->text(), QStringLiteral("third"));
     dialog.reject();
     QCOMPARE(widget.getChannels(), originalInputs);
     QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);

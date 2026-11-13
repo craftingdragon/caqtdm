@@ -59,6 +59,8 @@ private slots:
     void waveformSnapshotUsesJavaScriptArray();
     void channelDialogShowsConfigurationAndCancelPreservesIt_data();
     void channelDialogShowsConfigurationAndCancelPreservesIt();
+    void channelDialogAddsAndRemovesRows_data();
+    void channelDialogAddsAndRemovesRows();
 };
 
 #endif // TST_CASCRIPT_H
