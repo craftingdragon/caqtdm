@@ -895,3 +895,94 @@ void TestCaScript::busyMonitorTriggersAreWarnedAndNotQueued()
     QTRY_COMPARE(finished.count(), 2);
     QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), 30.0);
 }
+
+void TestCaScript::timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns()
+{
+    caScript widget;
+    widget.setOutputChannels({{"target", "result"}});
+    const QString endless = QStringLiteral("outputs.result.value = 42; while (true) {}");
+    widget.setScript(endless);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, SIGNAL(scriptError(QString)));
+    // Four timeouts must still allow a successful run, which resets the streak.
+    for (int i = 1; i <= 4; ++i) {
+        widget.executeScript();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), i, 2500);
+        QVERIFY(!finished.last().first().toBool());
+        QVERIFY(outputs.isEmpty());
+    }
+    widget.setScript("outputs.result.value = 7;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 5);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(outputs.count(), 1);
+    QCOMPARE(outputs.first().first().toMap().value("result").toDouble(), 7.0);
+    widget.setScript(endless);
+    for (int i = 6; i <= 10; ++i) {
+        widget.executeScript();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), i, 2500);
+        QVERIFY(!finished.last().first().toBool());
+        QCOMPARE(outputs.count(), 1);
+    }
+    QCOMPARE(warnings.count(), 9);
+    QVERIFY(errors.isValid());
+    QCOMPARE(errors.count(), 10); // Nine timeouts and a distinct disabled message.
+    QVERIFY(errors.last().first().toString().contains("5 consecutive timeouts"));
+    widget.setScript("outputs.result.value = 99;");
+    widget.executeScript();
+    QTest::qWait(60);
+    QCOMPARE(finished.count(), 10);
+    QCOMPARE(outputs.count(), 1);
+    // Reload means constructing a new widget; no runtime property re-enables the old one.
+    caScript reloaded;
+    reloaded.setScript("var ok = true;");
+    QSignalSpy reloadedFinished(&reloaded, &caScript::scriptFinished);
+    reloaded.executeScript();
+    QTRY_COMPARE(reloadedFinished.count(), 1);
+    QVERIFY(reloadedFinished.first().first().toBool());
+}
+
+void TestCaScript::slowSuccessfulScriptOnlyWarns()
+{
+    caScript widget;
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("var end = Date.now() + 200; while (Date.now() < end) {} outputs.result.value = 42;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, SIGNAL(scriptError(QString)));
+    QVERIFY(errors.isValid());
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("100 ms"));
+    QVERIFY(errors.isEmpty());
+    QCOMPARE(outputs.first().first().toMap().value("result").toDouble(), 42.0);
+    QTest::qWait(1000);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(errors.isEmpty());
+}
+
+void TestCaScript::closingBusyWidgetLeavesOtherWidgetResponsive()
+{
+    std::unique_ptr<caScript> busy(new caScript);
+    busy->setScript("while (true) {}");
+    busy->executeScript();
+    QTest::qWait(50);
+    caScript other;
+    other.setScript("var ok = true;");
+    QSignalSpy finished(&other, &caScript::scriptFinished);
+    other.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QElapsedTimer elapsed;
+    elapsed.start();
+    busy.reset();
+    QVERIFY2(elapsed.elapsed() < 1500, "Closing an interrupted widget blocked the GUI thread.");
+    other.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+}

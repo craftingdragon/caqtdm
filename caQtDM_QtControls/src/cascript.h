@@ -108,6 +108,7 @@ public slots:
 signals:
     void inputValueUpdated(int index);
     void scriptWarning(const QString &message);
+    void scriptError(const QString &message);
     void scriptFinished(bool success);
     void outputValuesReady(const QVariantMap &values);
 
@@ -120,6 +121,11 @@ private:
     int m_triggerInterval = 100;
     bool m_triggersStarted = false;
     QTimer *m_triggerTimer;
+    QTimer *m_warningTimer;
+    QTimer *m_timeoutTimer;
+    bool m_timedOut = false;
+    int m_consecutiveTimeouts = 0;
+    bool m_executionDisabled = false;
     QElapsedTimer m_lastExecution;
     ExecutionMode m_executionMode = Constant;
     QSet<int> m_readyInputs;

@@ -110,6 +110,20 @@ class CaScriptWorker : public QObject
     Q_OBJECT
 
 public:
+    void prepareExecution()
+    {
+        QMutexLocker lock(&m_mutex);
+        m_interruptRequested = false;
+        if (m_engine) m_engine->setInterrupted(false);
+    }
+
+    void interrupt()
+    {
+        QMutexLocker lock(&m_mutex);
+        m_interruptRequested = true;
+        if (m_engine) m_engine->setInterrupted(true);
+    }
+
     void stop()
     {
         QMutexLocker lock(&m_mutex);
@@ -126,6 +140,7 @@ public slots:
             QMutexLocker lock(&m_mutex);
             if (m_stopping) return;
             if (!m_engine) m_engine = new QJSEngine(this);
+            m_engine->setInterrupted(m_interruptRequested);
         }
         QJSValue types = m_engine->newObject();
         const QMetaEnum typeEnum = QMetaEnum::fromType<caScript::EpicsType>();
@@ -202,16 +217,33 @@ private:
     QMutex m_mutex;
     QJSEngine *m_engine = nullptr;
     bool m_stopping = false;
+    bool m_interruptRequested = false;
 };
 
-caScript::caScript(QWidget *parent) : QWidget(parent), m_triggerTimer(new QTimer(this))
+caScript::caScript(QWidget *parent) : QWidget(parent), m_triggerTimer(new QTimer(this)),
+    m_warningTimer(new QTimer(this)), m_timeoutTimer(new QTimer(this))
 {
     connect(m_triggerTimer, &QTimer::timeout, this, &caScript::executeScript);
     connect(this, &caScript::inputValueUpdated, this, &caScript::handleInputTrigger);
+    m_warningTimer->setSingleShot(true);
+    m_timeoutTimer->setSingleShot(true);
+    m_warningTimer->setTimerType(Qt::PreciseTimer);
+    m_timeoutTimer->setTimerType(Qt::PreciseTimer);
+    connect(m_warningTimer, &QTimer::timeout, this, [this]() {
+        emit scriptWarning(tr("Script execution exceeded 100 ms."));
+    });
+    connect(m_timeoutTimer, &QTimer::timeout, this, [this]() {
+        m_timedOut = true;
+        m_worker->interrupt();
+        emit scriptError(tr("Script execution interrupted after the 1000 ms time limit."));
+    });
 }
 
 caScript::~caScript()
 {
+    m_triggerTimer->stop();
+    m_warningTimer->stop();
+    m_timeoutTimer->stop();
     if (m_executionThread) {
         m_worker->stop();
         m_executionThread->quit();
@@ -221,6 +253,7 @@ caScript::~caScript()
 
 void caScript::executeScript()
 {
+    if (m_executionDisabled) return;
     if (m_running) {
         emit scriptWarning(tr("Trigger ignored: script is already running."));
         return;
@@ -247,6 +280,18 @@ void caScript::executeScript()
         m_worker->moveToThread(m_executionThread);
         connect(m_executionThread, &QThread::finished, m_worker, &QObject::deleteLater);
         connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values) {
+            m_warningTimer->stop();
+            m_timeoutTimer->stop();
+            if (m_timedOut) {
+                success = false;
+                if (++m_consecutiveTimeouts >= 5) {
+                    m_executionDisabled = true;
+                    m_triggerTimer->stop();
+                    emit scriptError(tr("Script disabled after 5 consecutive timeouts. Reload the panel to enable it again."));
+                }
+            } else {
+                m_consecutiveTimeouts = 0;
+            }
             m_running = false;
             if (success && !values.isEmpty()) emit outputValuesReady(values);
             emit scriptFinished(success);
@@ -269,7 +314,11 @@ void caScript::executeScript()
     for (const InputChannel &output : m_outputChannels) {
         outputs.insert(output.alias.isEmpty() ? output.channel : output.alias, QVariantMap());
     }
+    m_worker->prepareExecution();
+    m_timedOut = false;
     m_lastExecution.start();
+    m_warningTimer->start(100);
+    m_timeoutTimer->start(1000);
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
                               Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot),
                               Q_ARG(QVariantMap, outputs));
@@ -315,6 +364,7 @@ void caScript::refreshTriggers()
 {
     if (!m_triggersStarted) return;
     m_triggerTimer->stop();
+    if (m_executionDisabled) return;
     const QStringList errors = triggerConfigurationErrors();
     for (const QString &error : errors) emit scriptWarning(error);
     if (errors.isEmpty() && m_triggerMode == Periodic) {

@@ -49,6 +49,9 @@ private slots:
     void periodicTriggerRespectsMode_data();
     void periodicTriggerRespectsMode();
     void busyMonitorTriggersAreWarnedAndNotQueued();
+    void timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns();
+    void slowSuccessfulScriptOnlyWarns();
+    void closingBusyWidgetLeavesOtherWidgetResponsive();
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();
     void thrownStringIsReportedAsFailure();

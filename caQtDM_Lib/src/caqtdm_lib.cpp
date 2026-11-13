@@ -3620,6 +3620,10 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
             QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
             postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
         });
+        connect(scriptWidget, &caScript::scriptError, this, [this, scriptWidget](const QString &error) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), error).toLocal8Bit();
+            postMessageAndLog(QtCriticalMsg, message.data(), caQtDMLibLog);
+        });
         scriptWidget->startTriggers();
 
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
