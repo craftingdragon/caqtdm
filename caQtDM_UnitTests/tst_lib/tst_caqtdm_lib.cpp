@@ -306,6 +306,8 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     script.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
+    if (warning) QVERIFY(script.getLastOutputText().isEmpty());
+    else QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptOutputTarget = ") + expected.toString());
     QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
     QCOMPARE(data->edata.fieldtype, originalType);
     if (type == genSoftPV::String) {
@@ -405,6 +407,7 @@ void TestCaQtDM_Lib::scriptPublishesScaledInput()
     QTRY_COMPARE(finished.count(), 4);
     QVERIFY(!finished.last().first().toBool());
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 1600.0);
+    QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptScaledScore = 1600"));
 }
 
 void TestCaQtDM_Lib::scriptReceivesNumericWaveform_data()

@@ -44,6 +44,7 @@ class QTCON_EXPORT caScript : public QWidget
 {
     Q_OBJECT
 
+    Q_PROPERTY(bool show READ getShow WRITE setShow DESIGNABLE true)
     Q_PROPERTY(TriggerMode triggerMode READ getTriggerMode WRITE setTriggerMode DESIGNABLE true)
     Q_PROPERTY(QString triggerInput READ getTriggerInput WRITE setTriggerInput DESIGNABLE true)
     Q_PROPERTY(int triggerInterval READ getTriggerInterval WRITE setTriggerInterval DESIGNABLE true)
@@ -70,6 +71,10 @@ public:
 
     explicit caScript(QWidget *parent = nullptr);
     ~caScript() override;
+
+    bool getShow() const;
+    void setShow(bool show);
+    QString getLastOutputText() const;
 
     TriggerMode getTriggerMode() const;
     void setTriggerMode(TriggerMode mode);
@@ -99,6 +104,7 @@ public:
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
 public slots:
+    void updateLastOutput(const QString &channel, const QVariant &value);
     void startTriggers();
     void executeScript();
     void updateInputValue(int index, const QVariant &value);
@@ -113,7 +119,12 @@ signals:
     void scriptFinished(bool success);
     void outputValuesReady(const QVariantMap &values);
 
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
 private:
+    bool m_show = false;
+    QString m_lastOutputText;
     void handleInputTrigger(int index);
     void refreshTriggers();
 

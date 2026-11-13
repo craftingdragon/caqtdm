@@ -7581,6 +7581,11 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
         char error[SMALL_STRING_LENGTH] = {};
         if (!plugin->pvSetValue(&target, realValue, integerValue, text.data(), object.data(), error, 0)) {
             warn(channel, tr("internal plugin rejected the write"));
+        } else {
+            const QVariant writtenValue = target.edata.fieldtype == caSTRING
+                ? QVariant(QString::fromLatin1(text))
+                : QVariant(target.edata.fieldtype == caFLOAT ? double(float(realValue)) : realValue);
+            widget->updateLastOutput(channel, writtenValue);
         }
     }
 }

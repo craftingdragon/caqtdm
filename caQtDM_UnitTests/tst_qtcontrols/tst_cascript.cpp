@@ -1049,3 +1049,17 @@ void TestCaScript::scriptDiagnostics()
     QVERIFY2(message.contains(expected), qPrintable(message));
     if (lineTwo) QVERIFY2(message.contains("line 2"), qPrintable(message));
 }
+
+void TestCaScript::debugDisplayCanBeToggledWithoutLosingLastOutput()
+{
+    caScript widget;
+    QVERIFY(!widget.getShow());
+    QVERIFY(widget.getLastOutputText().isEmpty());
+    QVERIFY(widget.setProperty("show", true));
+    QVERIFY(QMetaObject::invokeMethod(&widget, "updateLastOutput", Qt::DirectConnection,
+                                     Q_ARG(QString, QString("internal://result")), Q_ARG(QVariant, QVariant(42))));
+    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
+    QVERIFY(widget.setProperty("show", false));
+    QVERIFY(widget.setProperty("show", true));
+    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
+}

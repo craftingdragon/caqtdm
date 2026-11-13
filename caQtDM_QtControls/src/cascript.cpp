@@ -40,6 +40,8 @@
 #include <QMutexLocker>
 #include <QSet>
 #include <QThread>
+#include <QPainter>
+#include <QApplication>
 #include <QTimer>
 #include <cmath>
 #include <limits>
@@ -403,6 +405,40 @@ void caScript::updateInputMetadata(int index, const QVariantMap &metadata)
             m_readyInputs.remove(index);
         }
     }
+}
+
+bool caScript::getShow() const
+{
+    return m_show;
+}
+
+void caScript::setShow(bool show)
+{
+    m_show = show;
+    update();
+}
+
+QString caScript::getLastOutputText() const
+{
+    return m_lastOutputText;
+}
+
+void caScript::updateLastOutput(const QString &channel, const QVariant &value)
+{
+    m_lastOutputText = channel + QStringLiteral(" = ") + value.toString();
+    update();
+}
+
+void caScript::paintEvent(QPaintEvent *event)
+{
+    QWidget::paintEvent(event);
+    const bool designer = qApp->property("APP_SOURCE").toString() == QStringLiteral("DESIGNER");
+    if (!designer && !m_show) return;
+    QPainter painter(this);
+    painter.fillRect(rect(), designer ? QColor(Qt::blue) : palette().color(QPalette::Window));
+    painter.setPen(designer ? QColor(Qt::white) : palette().color(QPalette::WindowText));
+    const QString text = designer ? objectName() : m_lastOutputText;
+    painter.drawText(rect(), Qt::AlignCenter | Qt::TextWordWrap, text);
 }
 
 void caScript::startTriggers()

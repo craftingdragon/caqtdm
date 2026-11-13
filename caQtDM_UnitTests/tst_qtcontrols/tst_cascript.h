@@ -52,6 +52,7 @@ private slots:
     void timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns();
     void slowSuccessfulScriptOnlyWarns();
     void consoleMessagesPreserveLevelsAndSuccess();
+    void debugDisplayCanBeToggledWithoutLosingLastOutput();
     void scriptDiagnostics_data();
     void scriptDiagnostics();
     void closingBusyWidgetLeavesOtherWidgetResponsive();
