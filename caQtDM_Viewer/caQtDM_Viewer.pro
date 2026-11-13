@@ -69,6 +69,11 @@ contains(QT_VER_MAJ, 6) {
 
 
 
+ios | android {
+    # caScript is part of the statically linked QtControls library.
+    QT += qml
+}
+
 TARGET = caQtDM
 TEMPLATE = app
 

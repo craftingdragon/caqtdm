@@ -25,6 +25,11 @@
 
 #include "cascript.h"
 
+// The Apple compatibility macro conflicts with std::isnan in QtQml headers.
+#ifdef isnan
+#undef isnan
+#endif
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
