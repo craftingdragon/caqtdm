@@ -39,6 +39,7 @@
 
 #ifndef MOBILE
 #include <QtDesigner/QtDesigner>
+#include "cascripttaskmenu.h"
 #endif
 
 #include <QtPlugin>
@@ -66,6 +67,8 @@ void CustomWidgetInterface_Monitors::initialize(QDesignerFormEditorInterface *fo
                                     Q_TYPEID(QDesignerTaskMenuExtension));
         // for edition of the generic soft pv options
         manager->registerExtensions(new GenSoftPVTaskMenuFactory(manager),
+                                    Q_TYPEID(QDesignerTaskMenuExtension));
+        manager->registerExtensions(new CaScriptTaskMenuFactory(manager),
                                     Q_TYPEID(QDesignerTaskMenuExtension));
 #else
     Q_UNUSED(formEditor);

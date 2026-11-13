@@ -63,6 +63,8 @@ private slots:
     void channelDialogAddsAndRemovesRows();
     void channelDialogSavesThroughDesignerCursor_data();
     void channelDialogSavesThroughDesignerCursor();
+    void channelDialogRejectsInvalidConfiguration_data();
+    void channelDialogRejectsInvalidConfiguration();
 };
 
 #endif // TST_CASCRIPT_H

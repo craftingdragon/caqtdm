@@ -30,11 +30,17 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLabel>
+#include <QDesignerFormWindowInterface>
+#include <QDesignerFormWindowCursorInterface>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
 CaScriptDialog::CaScriptDialog(caScript *widget, const QString &property, QWidget *parent)
-    : QDialog(parent)
+    : QDialog(parent), m_widget(widget), m_property(property)
 {
     const bool outputs = property == QStringLiteral("outputChannels");
     setWindowTitle(outputs ? tr("Edit output channels") : tr("Edit input channels"));
@@ -42,6 +48,7 @@ CaScriptDialog::CaScriptDialog(caScript *widget, const QString &property, QWidge
 
     auto *layout = new QVBoxLayout(this);
     auto *table = new QTableWidget(channels.size(), 2, this);
+    m_table = table;
     table->setHorizontalHeaderLabels({tr("Channel"), tr("Alias (optional)")});
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -55,6 +62,8 @@ CaScriptDialog::CaScriptDialog(caScript *widget, const QString &property, QWidge
     auto *rowActions = new QHBoxLayout;
     auto *add = new QPushButton(tr("Add"), this);
     auto *remove = new QPushButton(tr("Remove"), this);
+    add->setAutoDefault(false);
+    remove->setAutoDefault(false);
     add->setObjectName(QStringLiteral("addChannel"));
     remove->setObjectName(QStringLiteral("removeChannel"));
     rowActions->addWidget(add);
@@ -74,8 +83,44 @@ CaScriptDialog::CaScriptDialog(caScript *widget, const QString &property, QWidge
         if (!rows.isEmpty()) table->removeRow(rows.first().row());
     });
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
+    m_error = new QLabel(this);
+    m_error->setObjectName(QStringLiteral("configurationError"));
+    m_error->setWordWrap(true);
+    m_error->hide();
+    layout->addWidget(m_error);
+    connect(table, &QTableWidget::itemChanged, m_error, &QWidget::hide);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(buttons, &QDialogButtonBox::accepted, this, &CaScriptDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
     resize(600, 300);
+}
+
+void CaScriptDialog::accept()
+{
+    QList<caScript::InputChannel> channels;
+    QJsonArray entries;
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        const QTableWidgetItem *channelItem = m_table->item(row, 0);
+        const QTableWidgetItem *aliasItem = m_table->item(row, 1);
+        const QString channel = channelItem ? channelItem->text().trimmed() : QString();
+        const QString alias = aliasItem ? aliasItem->text().trimmed() : QString();
+        channels.append({channel, alias});
+        entries.append(QJsonObject{{QStringLiteral("channel"), channel}, {QStringLiteral("alias"), alias}});
+    }
+    const QStringList errors = caScript::validateInputChannels(channels);
+    if (!errors.isEmpty()) {
+        m_error->setText(errors.join('\n'));
+        m_error->show();
+        return;
+    }
+    if (QDesignerFormWindowInterface *form = QDesignerFormWindowInterface::findFormWindow(m_widget)) {
+        form->cursor()->setProperty(m_property,
+            QString::fromUtf8(QJsonDocument(entries).toJson(QJsonDocument::Compact)));
+        QDialog::accept();
+    } else {
+        m_error->setText(tr("This editor requires a Qt Designer form."));
+        m_error->show();
+    }
 }

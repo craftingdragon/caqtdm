@@ -31,6 +31,8 @@
 #include <qtcontrols_global.h>
 
 class caScript;
+class QLabel;
+class QTableWidget;
 
 class QTCON_EXPORT CaScriptDialog : public QDialog
 {
@@ -38,6 +40,15 @@ class QTCON_EXPORT CaScriptDialog : public QDialog
 
 public:
     explicit CaScriptDialog(caScript *widget, const QString &property, QWidget *parent = nullptr);
+
+public slots:
+    void accept() override;
+
+private:
+    caScript *m_widget;
+    QString m_property;
+    QTableWidget *m_table;
+    QLabel *m_error;
 };
 
 #endif // CASCRIPTDIALOG_H

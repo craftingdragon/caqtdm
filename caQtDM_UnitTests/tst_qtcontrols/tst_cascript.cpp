@@ -29,6 +29,7 @@
 #include "fakeformwindow.h"
 
 #include <QDialogButtonBox>
+#include <QLabel>
 #include <QJsonDocument>
 #include <QFile>
 #include <QElapsedTimer>
@@ -641,6 +642,48 @@ void TestCaScript::channelDialogSavesThroughDesignerCursor()
         "[{\"channel\":\"internal://changed\",\"alias\":\"changed\"},"
         "{\"channel\":\"%1\",\"alias\":\"\"}]").arg(secondChannel).toUtf8());
     QVERIFY(QJsonDocument::fromJson(saved.value(property).toString().toUtf8()) == expected);
+}
+
+void TestCaScript::channelDialogRejectsInvalidConfiguration_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogRejectsInvalidConfiguration()
+{
+    QFETCH(QString, property);
+    FakeFormWindow form;
+    caScript widget(&form);
+    QVERIFY(widget.setProperty(property.toLatin1().constData(), QStringLiteral(
+        "[{\"channel\":\"internal://first\",\"alias\":\"first\"},"
+        "{\"channel\":\"internal://second\",\"alias\":\"second\"}]")));
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QDialogButtonBox *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(table);
+    QVERIFY(buttons);
+    QPushButton *save = buttons->button(QDialogButtonBox::Ok);
+    QVERIFY(save);
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    table->item(1, 1)->setText(QStringLiteral("first"));
+    save->click();
+    QCOMPARE(accepted.count(), 0);
+    QVERIFY(form.fakeCursor()->properties.isEmpty());
+    QLabel *error = dialog.findChild<QLabel *>(QStringLiteral("configurationError"));
+    QVERIFY(error);
+    QVERIFY(!error->text().isEmpty());
+    table->item(1, 1)->setText(QStringLiteral("second"));
+    table->item(0, 0)->setText(QStringLiteral("   "));
+    save->click();
+    QCOMPARE(accepted.count(), 0);
+    QVERIFY(form.fakeCursor()->properties.isEmpty());
+    QVERIFY(!error->text().isEmpty());
+    table->item(0, 0)->setText(QStringLiteral("internal://first"));
+    save->click();
+    QCOMPARE(accepted.count(), 1);
+    QVERIFY(form.fakeCursor()->properties.contains(property));
 }
 
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()

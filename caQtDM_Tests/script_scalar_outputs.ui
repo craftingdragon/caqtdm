@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>ScriptScalarTest</class>
  <widget class="QMainWindow" name="ScriptScalarTest">
@@ -50,7 +50,7 @@ Change the factor and execute again to update the result.</string>
       <height>35</height>
      </rect>
     </property>
-    <property name="channel">
+    <property name="channel" stdset="0">
      <string>epics3://PACMAN:PACMAN_USER_SCORE</string>
     </property>
    </widget>
@@ -76,7 +76,7 @@ Change the factor and execute again to update the result.</string>
       <height>35</height>
      </rect>
     </property>
-    <property name="channel">
+    <property name="channel" stdset="0">
      <string>internal://scriptFactor</string>
     </property>
    </widget>
@@ -102,7 +102,7 @@ Change the factor and execute again to update the result.</string>
       <height>35</height>
      </rect>
     </property>
-    <property name="channel">
+    <property name="channel" stdset="0">
      <string>internal://scriptScaledScore</string>
     </property>
    </widget>
@@ -131,11 +131,11 @@ Change the factor and execute again to update the result.</string>
     <property name="variable">
      <string>scriptFactor</string>
     </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
     <property name="value">
      <string>2</string>
-    </property>
-    <property name="dataType">
-     <enum>genSoftPV::Double</enum>
     </property>
    </widget>
    <widget class="genSoftPV" name="resultDefinition">
@@ -150,33 +150,33 @@ Change the factor and execute again to update the result.</string>
     <property name="variable">
      <string>scriptScaledScore</string>
     </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
     <property name="value">
      <string>0</string>
-    </property>
-    <property name="dataType">
-     <enum>genSoftPV::Double</enum>
     </property>
    </widget>
    <widget class="caScript" name="scaleScript">
     <property name="geometry">
      <rect>
-      <x>640</x>
-      <y>280</y>
-      <width>10</width>
-      <height>10</height>
+      <x>599</x>
+      <y>249</y>
+      <width>51</width>
+      <height>41</height>
      </rect>
     </property>
-    <property name="channels">
-     <string>[{"channel":"epics3://PACMAN:PACMAN_USER_SCORE","alias":"score"},{"channel":"internal://scriptFactor","alias":"factor"}]</string>
-    </property>
-    <property name="outputChannels">
-     <string>[{"channel":"internal://scriptScaledScore","alias":"result"}]</string>
-    </property>
     <property name="script">
-     <string>if (!("value" in inputs.score) || !("value" in inputs.factor)) {
-    throw new Error("Input values are not available yet");
+     <string>if (!(&quot;value&quot; in inputs.score) || !(&quot;value&quot; in inputs.factor)) {
+    throw new Error(&quot;Input values are not available yet&quot;);
 }
 outputs.result.value = inputs.score.value * inputs.factor.value;</string>
+    </property>
+    <property name="channels">
+     <string>[{&quot;alias&quot;:&quot;score&quot;,&quot;channel&quot;:&quot;epics3://PACMAN:PACMAN_USER_SCORE&quot;},{&quot;alias&quot;:&quot;factor&quot;,&quot;channel&quot;:&quot;internal://scriptFactor&quot;}]</string>
+    </property>
+    <property name="outputChannels" stdset="0">
+     <string>[{&quot;alias&quot;:&quot;result&quot;,&quot;channel&quot;:&quot;internal://scriptScaledScore&quot;}]</string>
     </property>
    </widget>
   </widget>
@@ -185,31 +185,41 @@ outputs.result.value = inputs.score.value * inputs.factor.value;</string>
   <customwidget>
    <class>caLineEdit</class>
    <extends>QLineEdit</extends>
-   <header>calineedit.h</header>
-  </customwidget>
-  <customwidget>
-   <class>caTextEntry</class>
-   <extends>QLineEdit</extends>
-   <header>catextentry.h</header>
-  </customwidget>
-  <customwidget>
-   <class>genSoftPV</class>
-   <extends>QWidget</extends>
-   <header>gensoftpv.h</header>
+   <header>caLineEdit</header>
   </customwidget>
   <customwidget>
    <class>caScript</class>
    <extends>QWidget</extends>
    <header>cascript.h</header>
   </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>genSoftPV</header>
+  </customwidget>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>QLineEdit</extends>
+   <header>catextentry.h</header>
+  </customwidget>
  </customwidgets>
- <resources />
+ <resources/>
  <connections>
   <connection>
    <sender>execute</sender>
    <signal>clicked()</signal>
    <receiver>scaleScript</receiver>
    <slot>executeScript()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+   </hints>
   </connection>
  </connections>
 </ui>

@@ -181,6 +181,8 @@ XDR_HACK {
 !MOBILE {
     SOURCES += src/cascriptdialog.cpp
     HEADERS += src/cascriptdialog.h
+    SOURCES += src/cascripttaskmenu.cpp
+    HEADERS += src/cascripttaskmenu.h
     SOURCES +=  src/pvtaskmenu.cpp src/pvdialog.cpp
     HEADERS +=  src/pvtaskmenu.h src/pvdialog.h
     SOURCES +=  src/gensoftpvtaskmenu.cpp src/gensoftpvdialog.cpp
