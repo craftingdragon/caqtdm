@@ -29,6 +29,7 @@
 #include <QList>
 #include <QByteArray>
 #include <QMap>
+#include <QSet>
 #include <QStringList>
 #include <QVariantMap>
 #include <QWidget>
@@ -41,11 +42,15 @@ class QTCON_EXPORT caScript : public QWidget
 {
     Q_OBJECT
 
+    Q_PROPERTY(ExecutionMode executionMode READ getExecutionMode WRITE setExecutionMode DESIGNABLE true)
     Q_PROPERTY(QString script READ getScript WRITE setScript)
     Q_PROPERTY(QString channels READ getChannels WRITE setChannels)
     Q_PROPERTY(QString outputChannels READ getOutputChannelsJson WRITE setOutputChannelsJson)
 
 public:
+    enum ExecutionMode { Constant, DataDriven };
+    Q_ENUM(ExecutionMode)
+
     enum EpicsType { String = 0, Short = 1, Float = 2, Enum = 3, Char = 4, Long = 5, Double = 6 };
     Q_ENUM(EpicsType)
 
@@ -57,6 +62,9 @@ public:
 
     explicit caScript(QWidget *parent = nullptr);
     ~caScript() override;
+
+    ExecutionMode getExecutionMode() const;
+    void setExecutionMode(ExecutionMode mode);
 
     QString getScript() const;
     void setScript(const QString &script);
@@ -85,6 +93,8 @@ signals:
     void outputValuesReady(const QVariantMap &values);
 
 private:
+    ExecutionMode m_executionMode = Constant;
+    QSet<int> m_readyInputs;
     QString m_script;
     QList<InputChannel> m_inputChannels;
     QList<InputChannel> m_outputChannels;

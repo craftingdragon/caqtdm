@@ -268,6 +268,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     layout->addWidget(scriptWidget);
     const QString script = QStringLiteral("// Grüezi <>&\noutputs.result.value = inputs.score.value;\n");
     scriptWidget->setScript(script);
+    scriptWidget->setExecutionMode(caScript::DataDriven);
     const QList<caScript::InputChannel> inputs = {
         {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
         {QStringLiteral("internal://scriptFactor"), QString()}
@@ -289,6 +290,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
     QVERIFY(restored != nullptr);
     QCOMPARE(restored->getScript(), script);
+    QCOMPARE(restored->getExecutionMode(), caScript::DataDriven);
     QCOMPARE(restored->getOutputChannelsJson(), scriptWidget->getOutputChannelsJson());
     const QList<caScript::InputChannel> restoredInputs = restored->getInputChannels();
     QCOMPARE(restoredInputs.size(), inputs.size());
@@ -720,4 +722,66 @@ void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
         QCOMPARE(restoredInputs.at(i).alias, inputs.at(i).alias);
     }
     QVERIFY(restored.inputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::executionModesRespectConnectionFreshness()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("executionMode", caScript::DataDriven));
+    const QMetaProperty property = widget.metaObject()->property(widget.metaObject()->indexOfProperty("executionMode"));
+    QVERIFY(property.isEnumType());
+    widget.setInputChannels({{"first", "a"}, {"second", "b"}});
+    widget.setScript("if (inputs.a.value !== 1 || inputs.b.value !== 2) throw 'bad snapshot';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QVERIFY(finished.isEmpty());
+    const QVariantMap connected = {{"connected", true}};
+    widget.updateInputMetadata(0, connected);
+    widget.updateInputValue(0, 1);
+    widget.updateInputMetadata(1, connected);
+    widget.executeScript();
+    QVERIFY(finished.isEmpty());
+    widget.updateInputValue(1, 2);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    widget.updateInputValue(0, 1);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    widget.updateInputMetadata(1, {{"connected", false}});
+    widget.executeScript();
+    QCOMPARE(finished.count(), 2);
+    widget.updateInputMetadata(1, connected);
+    widget.executeScript();
+    QCOMPARE(finished.count(), 2);
+    widget.updateInputValue(1, 2);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 3);
+    QVERIFY(finished.last().first().toBool());
+    widget.setInputChannels(widget.getInputChannels());
+    widget.executeScript();
+    QCOMPARE(finished.count(), 3);
+}
+
+void TestCaScript::constantModeAllowsMissingInputs()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("executionMode", caScript::Constant));
+    widget.setScript("if (Object.keys(inputs).length !== 0) throw 'unexpected input';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    widget.setInputChannels({{"source", "a"}});
+    widget.setScript("if ('value' in inputs.a) throw 'unexpected value';");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    widget.updateInputMetadata(0, {{"connected", true}});
+    widget.updateInputValue(0, 42);
+    widget.updateInputMetadata(0, {{"connected", false}});
+    widget.setScript("if (inputs.a.connected !== false || inputs.a.value !== 42) throw 'lost snapshot';");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 3);
+    QVERIFY(finished.last().first().toBool());
 }

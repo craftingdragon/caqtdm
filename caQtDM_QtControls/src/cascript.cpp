@@ -219,14 +219,21 @@ caScript::~caScript()
 void caScript::executeScript()
 {
     if (m_running) return;
-    m_running = true;
     if (!inputConfigurationErrors().isEmpty() || !outputConfigurationErrors().isEmpty()) {
+        m_running = true;
         QTimer::singleShot(0, this, [this]() {
             m_running = false;
             emit scriptFinished(false);
         });
         return;
     }
+
+    if (m_executionMode == DataDriven) {
+        for (int i = 0; i < m_inputChannels.size(); ++i) {
+            if (!m_readyInputs.contains(i)) return;
+        }
+    }
+    m_running = true;
 
     if (!m_executionThread) {
         m_executionThread = new QThread(this);
@@ -265,6 +272,11 @@ void caScript::updateInputValue(int index, const QVariant &value)
 {
     if (index >= 0 && index < m_inputChannels.size()) {
         m_inputValues.insert(index, value);
+        if (value.isValid() && m_inputMetadata.value(index).value(QStringLiteral("connected")).toBool()) {
+            m_readyInputs.insert(index);
+        } else {
+            m_readyInputs.remove(index);
+        }
     }
 }
 
@@ -279,7 +291,20 @@ void caScript::updateInputMetadata(int index, const QVariantMap &metadata)
 {
     if (index >= 0 && index < m_inputChannels.size()) {
         m_inputMetadata.insert(index, metadata);
+        if (!metadata.value(QStringLiteral("connected")).toBool()) {
+            m_readyInputs.remove(index);
+        }
     }
+}
+
+caScript::ExecutionMode caScript::getExecutionMode() const
+{
+    return m_executionMode;
+}
+
+void caScript::setExecutionMode(ExecutionMode mode)
+{
+    m_executionMode = mode;
 }
 
 QString caScript::getScript() const
@@ -343,6 +368,7 @@ void caScript::setInputChannels(const QList<InputChannel> &inputs)
 {
     m_inputChannels = inputs;
     m_inputValues.clear();
+    m_readyInputs.clear();
     m_inputRawBytes.clear();
     m_inputMetadata.clear();
     m_inputJsonError.clear();

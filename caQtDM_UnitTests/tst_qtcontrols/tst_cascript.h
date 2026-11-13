@@ -42,6 +42,8 @@ private slots:
     void inputConfigurationSurvivesJsonRoundTrip();
     void invalidInputJsonPreservesInputsAndCanBeCorrected();
     void scriptAndInputsSurviveUiFileRoundTrip();
+    void executionModesRespectConnectionFreshness();
+    void constantModeAllowsMissingInputs();
     void simpleScriptCompletesAsynchronously();
     void runtimeErrorIsReportedAndNextRunSucceeds();
     void thrownStringIsReportedAsFailure();
