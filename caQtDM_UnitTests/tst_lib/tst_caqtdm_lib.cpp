@@ -633,6 +633,42 @@ void TestCaQtDM_Lib::scriptReceivesMatrix()
     }
 }
 
+void TestCaQtDM_Lib::scriptReceivesUnitsAndPrecision()
+{
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptDisplayMetadata"));
+    source.setDataType(genSoftPV::Double);
+    source.setValue(QStringLiteral("1.234"));
+    source.setUnits(QStringLiteral("mA"));
+    source.setPrecision(3);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptDisplayMetadata"), QStringLiteral("current")}});
+    script.setScript(QStringLiteral(
+        "if (inputs.current.units !== 'mA') throw new Error('Incorrect units');\n"
+        "if (inputs.current.precision !== 3) throw new Error('Incorrect precision');\n"
+        "if (inputs.current.value !== 1.234) throw new Error('Incorrect value');"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptDisplayMetadata"));
+    QVERIFY(input);
+    QCOMPARE(QString::fromLatin1(input->edata.units), QStringLiteral("mA"));
+    QCOMPARE(input->edata.precision, short(3));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
 {
     QTest::addColumn<int>("sourceType");
