@@ -6666,19 +6666,60 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
+        QVariantMap metadata = {
+            {QStringLiteral("connected"), bool(data.edata.connected)},
+            {QStringLiteral("status"), int(data.edata.status)},
+            {QStringLiteral("severity"), int(data.edata.severity)},
+            {QStringLiteral("units"), QString::fromLatin1(data.edata.units)},
+            {QStringLiteral("precision"), int(data.edata.precision)},
+            {QStringLiteral("lower_disp_limit"), data.edata.lower_disp_limit},
+            {QStringLiteral("upper_disp_limit"), data.edata.upper_disp_limit},
+            {QStringLiteral("lower_alarm_limit"), data.edata.lower_alarm_limit},
+            {QStringLiteral("lower_warning_limit"), data.edata.lower_warning_limit},
+            {QStringLiteral("upper_warning_limit"), data.edata.upper_warning_limit},
+            {QStringLiteral("upper_alarm_limit"), data.edata.upper_alarm_limit},
+            {QStringLiteral("lower_ctrl_limit"), data.edata.lower_ctrl_limit},
+            {QStringLiteral("upper_ctrl_limit"), data.edata.upper_ctrl_limit},
+            {QStringLiteral("nelm"), data.edata.nelm},
+            {QStringLiteral("valueCount"), data.edata.valueCount},
+            {QStringLiteral("enumCount"), data.edata.enumCount},
+            {QStringLiteral("dimCount"), data.edata.dimCount},
+            {QStringLiteral("dim"), QVariantList{data.edata.dim[0], data.edata.dim[1]}},
+            {QStringLiteral("ntType"), data.edata.ntType},
+            {QStringLiteral("accessR"), bool(data.edata.accessR)},
+            {QStringLiteral("accessW"), bool(data.edata.accessW)}
+        };
+        switch (data.edata.fieldtype) {
+        case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
+        case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
+        case caFLOAT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Float)); break;
+        case caENUM: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Enum)); break;
+        case caCHAR: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Char)); break;
+        case caLONG: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Long)); break;
+        case caDOUBLE: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Double)); break;
+        default: break;
+        }
+        if (data.edata.connected && data.edata.fieldtype == caENUM) {
+            const QStringList labels = data.edata.enumCount > 0
+                ? String.split(QChar(27)).mid(0, data.edata.enumCount) : QStringList();
+            metadata.insert(QStringLiteral("enumStrings"), labels);
+            if (data.edata.ivalue >= 0 && data.edata.ivalue < labels.size()) {
+                metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
+            }
+        }
+        scriptWidget->updateInputMetadata(data.specData[0], metadata);
         if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
                                     || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG
                                     || (data.edata.fieldtype == caCHAR && data.edata.dimCount == 2))
             && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
                 || data.edata.dimCount == 2)) {
             int elementSize;
-            caScript::EpicsType type;
             switch (data.edata.fieldtype) {
-            case caDOUBLE: elementSize = sizeof(double); type = caScript::Double; break;
-            case caFLOAT: elementSize = sizeof(float); type = caScript::Float; break;
-            case caINT: elementSize = sizeof(int16_t); type = caScript::Short; break;
-            case caLONG: elementSize = sizeof(int32_t); type = caScript::Long; break;
-            case caCHAR: elementSize = sizeof(uint8_t); type = caScript::Char; break;
+            case caDOUBLE: elementSize = sizeof(double); break;
+            case caFLOAT: elementSize = sizeof(float); break;
+            case caINT: elementSize = sizeof(int16_t); break;
+            case caLONG: elementSize = sizeof(int32_t); break;
+            case caCHAR: elementSize = sizeof(uint8_t); break;
             default: return;
             }
             QVariantList values;
@@ -6721,8 +6762,6 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     }
                     values = matrix;
                 }
-                scriptWidget->updateInputMetadata(data.specData[0],
-                    {{QStringLiteral("fieldtype"), int(type)}});
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
         } else if (data.edata.connected && data.edata.fieldtype == caSTRING
@@ -6733,38 +6772,12 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
                 values.append(texts.at(i));
             }
-            scriptWidget->updateInputMetadata(data.specData[0],
-                {{QStringLiteral("fieldtype"), int(caScript::String)}});
             scriptWidget->updateInputValue(data.specData[0], values);
         } else if (data.edata.connected && data.edata.fieldtype == caCHAR
                    && data.edata.nelm > 1 && data.edata.dimCount == 0) {
-            scriptWidget->updateInputMetadata(data.specData[0],
-                {{QStringLiteral("fieldtype"), int(caScript::Char)}});
             scriptWidget->updateInputValue(data.specData[0], String);
         } else if (data.edata.connected && data.edata.valueCount <= 1
                    && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
-            QVariantMap metadata;
-            metadata.insert(QStringLiteral("units"), QString::fromLatin1(data.edata.units));
-            metadata.insert(QStringLiteral("precision"), int(data.edata.precision));
-            switch (data.edata.fieldtype) {
-            case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
-            case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
-            case caFLOAT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Float)); break;
-            case caENUM: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Enum)); break;
-            case caCHAR: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Char)); break;
-            case caLONG: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Long)); break;
-            case caDOUBLE: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Double)); break;
-            default: break;
-            }
-            if (data.edata.fieldtype == caENUM) {
-                const QStringList labels = data.edata.enumCount > 0
-                    ? String.split(QChar(27)).mid(0, data.edata.enumCount) : QStringList();
-                metadata.insert(QStringLiteral("enumStrings"), labels);
-                if (data.edata.ivalue >= 0 && data.edata.ivalue < labels.size()) {
-                    metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
-                }
-            }
-            scriptWidget->updateInputMetadata(data.specData[0], metadata);
             if (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT) {
                 scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
             } else if (data.edata.fieldtype == caINT || data.edata.fieldtype == caCHAR

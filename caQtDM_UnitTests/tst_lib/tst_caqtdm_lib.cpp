@@ -32,6 +32,7 @@
 #include <cascript.h>
 #include <gensoftpv.h>
 #include <QSignalSpy>
+#include <QJsonDocument>
 #include <QRegularExpression>
 #include <QMutexLocker>
 
@@ -633,23 +634,73 @@ void TestCaQtDM_Lib::scriptReceivesMatrix()
     }
 }
 
-void TestCaQtDM_Lib::scriptReceivesUnitsAndPrecision()
+void TestCaQtDM_Lib::scriptReceivesMetadata_data()
 {
+    QTest::addColumn<QString>("shape");
+    QTest::addColumn<double>("value");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<int>("severity");
+    QTest::newRow("scalar-no-alarm") << QStringLiteral("scalar") << 0.0 << 0 << 0;
+    QTest::newRow("scalar-high") << QStringLiteral("scalar") << 8.0 << 4 << 1;
+    QTest::newRow("scalar-hihi") << QStringLiteral("scalar") << 10.0 << 3 << 2;
+    QTest::newRow("scalar-low") << QStringLiteral("scalar") << -8.0 << 6 << 1;
+    QTest::newRow("scalar-lolo") << QStringLiteral("scalar") << -10.0 << 5 << 2;
+    QTest::newRow("waveform") << QStringLiteral("waveform") << 0.0 << 0 << 0;
+    QTest::newRow("matrix") << QStringLiteral("matrix") << 0.0 << 0 << 0;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMetadata()
+{
+    QFETCH(QString, shape);
+    QFETCH(double, value);
+    QFETCH(int, status);
+    QFETCH(int, severity);
+    const bool waveform = shape == QStringLiteral("waveform");
+    const bool matrix = shape == QStringLiteral("matrix");
     m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
     genSoftPV source(m_parentAS);
-    source.setVariable(QStringLiteral("scriptDisplayMetadata"));
+    source.setVariable(QStringLiteral("scriptMetadata"));
     source.setDataType(genSoftPV::Double);
-    source.setValue(QStringLiteral("1.234"));
-    source.setUnits(QStringLiteral("mA"));
-    source.setPrecision(3);
+    source.setValue(matrix ? QStringLiteral("0;1;2;3;4;5") : waveform
+        ? QStringLiteral("0;1;2;99;100") : QString::number(value));
+    source.setUnits(QStringLiteral("V"));
+    source.setPrecision(2);
+    source.setDrvl(QStringLiteral("-12"));
+    source.setDrvh(QStringLiteral("12"));
+    source.setLopr(QStringLiteral("-10"));
+    source.setHopr(QStringLiteral("10"));
+    source.setLolo(QStringLiteral("-9"));
+    source.setLow(QStringLiteral("-7"));
+    source.setHigh(QStringLiteral("7"));
+    source.setHihi(QStringLiteral("9"));
+    if (waveform) { source.setNelm(5); source.setNord(3); }
+    if (matrix) { source.setMatrixRows(2); source.setMatrixColumns(3); }
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
+    QVariantMap expected = {
+        {"connected", true}, {"fieldtype", int(caScript::Double)},
+        {"units", "V"}, {"precision", 2}, {"status", status}, {"severity", severity},
+        {"lower_disp_limit", -10}, {"upper_disp_limit", 10},
+        {"lower_ctrl_limit", -12}, {"upper_ctrl_limit", 12},
+        {"lower_alarm_limit", -9}, {"lower_warning_limit", -7},
+        {"upper_warning_limit", 7}, {"upper_alarm_limit", 9},
+        {"nelm", matrix ? 6 : waveform ? 5 : 1},
+        {"valueCount", matrix ? 6 : waveform ? 3 : 1}, {"enumCount", 0},
+        {"dimCount", matrix ? 2 : 0}, {"ntType", matrix ? int(NT_MATRIX) : int(NT_NONE)},
+        {"dim", matrix ? QVariantList{2, 3} : QVariantList{0, 0}},
+        {"accessR", true}, {"accessW", true}
+    };
+    const QString json = QString::fromUtf8(QJsonDocument::fromVariant(expected).toJson(QJsonDocument::Compact));
     caScript script(m_parentAS);
-    script.setInputChannels({{QStringLiteral("internal://scriptDisplayMetadata"), QStringLiteral("current")}});
+    script.setInputChannels({{QStringLiteral("internal://scriptMetadata"), QStringLiteral("pv")}});
     script.setScript(QStringLiteral(
-        "if (inputs.current.units !== 'mA') throw new Error('Incorrect units');\n"
-        "if (inputs.current.precision !== 3) throw new Error('Incorrect precision');\n"
-        "if (inputs.current.value !== 1.234) throw new Error('Incorrect value');"));
+        "const expected = %1;\n"
+        "for (const key of Object.keys(expected)) {\n"
+        "    if (JSON.stringify(inputs.pv[key]) !== JSON.stringify(expected[key]))\n"
+        "        throw new Error('Incorrect metadata: ' + key);\n"
+        "}\n"
+        "if (!Array.isArray(inputs.pv.dim)) throw new Error('Expected dimension array');\n"
+        "inputs.pv.units = 'changed'; inputs.pv.dim[0] = 999;").arg(json));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
     bool updated = false;
     connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
@@ -659,14 +710,50 @@ void TestCaQtDM_Lib::scriptReceivesUnitsAndPrecision()
     });
     QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
     QTRY_VERIFY(updated);
-    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptDisplayMetadata"));
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptMetadata"));
     QVERIFY(input);
-    QCOMPARE(QString::fromLatin1(input->edata.units), QStringLiteral("mA"));
-    QCOMPARE(input->edata.precision, short(3));
+    QCOMPARE(input->edata.status, short(status));
+    QCOMPARE(input->edata.severity, short(severity));
+    QCOMPARE(input->edata.upper_ctrl_limit, 12.0);
     QSignalSpy finished(&script, &caScript::scriptFinished);
-    script.executeScript();
-    QTRY_COMPARE(finished.count(), 1);
-    QVERIFY(finished.first().first().toBool());
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+    QCOMPARE(QString::fromLatin1(input->edata.units), QStringLiteral("V"));
+    QCOMPARE(input->edata.dim[0], matrix ? 2 : 0);
+}
+
+void TestCaQtDM_Lib::scriptReceivesConnectionAndAccessChanges()
+{
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptAccessMetadata"));
+    source.setDataType(genSoftPV::Double);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptAccessMetadata"), QStringLiteral("pv")}});
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptAccessMetadata"));
+    QVERIFY(input);
+    QTRY_VERIFY(input->edata.connected);
+    knobData snapshot = *input;
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int step = 0; step < 3; ++step) {
+        snapshot.edata.connected = step != 1;
+        snapshot.edata.accessR = step != 1;
+        snapshot.edata.accessW = step == 2;
+        m_caQtDM_Lib->Callback_UpdateWidget(snapshot.index, &script, "", "", "", snapshot);
+        script.setScript(QStringLiteral(
+            "if (inputs.pv.connected !== %1 || inputs.pv.accessR !== %1 || inputs.pv.accessW !== %2)\n"
+            "    throw new Error('Incorrect connection or access state');")
+            .arg(step != 1 ? "true" : "false", step == 2 ? "true" : "false"));
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), step + 1);
+        QVERIFY(finished.last().first().toBool());
+    }
 }
 
 void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()

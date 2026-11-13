@@ -514,10 +514,15 @@ void TestCaScript::waveformSnapshotUsesJavaScriptArray()
     caScript widget;
     widget.setInputChannels({{QStringLiteral("internal://samples"), QStringLiteral("samples")}});
     widget.updateInputValue(0, QVariantList{-2, 0, 3.75});
+    widget.updateInputMetadata(0, {{QStringLiteral("dim"), QVariantList{0, 0}},
+                                  {QStringLiteral("enumStrings"), QStringList{"OFF", "ON"}}});
     widget.setScript(QStringLiteral(
         "const values = inputs.samples.value;\n"
         "if (!Array.isArray(values) || values.length !== 3 || values[2] !== 3.75)\n"
-        "    throw new Error('Incorrect JavaScript array');"));
+        "    throw new Error('Incorrect JavaScript array');\n"
+        "if (!Array.isArray(inputs.samples.dim) || inputs.samples.dim.length !== 2\n"
+        "    || !Array.isArray(inputs.samples.enumStrings) || inputs.samples.enumStrings[1] !== 'ON')\n"
+        "    throw new Error('Incorrect metadata arrays');"));
     QSignalSpy finished(&widget, &caScript::scriptFinished);
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 1);

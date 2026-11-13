@@ -47,7 +47,8 @@
 namespace {
 QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value)
 {
-    if (value.userType() != QMetaType::QVariantList) return engine->toScriptValue(value);
+    if (value.userType() != QMetaType::QVariantList && value.userType() != QMetaType::QStringList)
+        return engine->toScriptValue(value);
     const QVariantList elements = value.toList();
     QJSValue array = engine->newArray(elements.size());
     for (int i = 0; i < elements.size(); ++i) {
@@ -146,11 +147,13 @@ public slots:
         for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
             const QVariantMap channel = it.value().toMap();
             QJSValue scriptChannel = scriptInputs.property(it.key());
-            if (channel.contains(QStringLiteral("value"))) {
-                if (channel.value(QStringLiteral("value")).userType() == QMetaType::QVariantList) {
-                    scriptChannel.setProperty(QStringLiteral("value"),
-                        inputValueToScript(m_engine, channel.value(QStringLiteral("value"))));
+            for (auto property = channel.constBegin(); property != channel.constEnd(); ++property) {
+                if (property.value().userType() == QMetaType::QVariantList
+                    || property.value().userType() == QMetaType::QStringList) {
+                    scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value()));
                 }
+            }
+            if (channel.contains(QStringLiteral("value"))) {
                 // Convert the snapshot in C++; expose only the captured results to JavaScript.
                 QVariantMap conversions;
                 for (int i = 0; i < typeEnum.keyCount(); ++i) {
