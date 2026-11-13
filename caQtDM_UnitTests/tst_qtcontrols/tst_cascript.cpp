@@ -26,7 +26,9 @@
 #include "tst_cascript.h"
 #include "cascript.h"
 #include "cascriptdialog.h"
+#include "fakeformwindow.h"
 
+#include <QDialogButtonBox>
 #include <QJsonDocument>
 #include <QFile>
 #include <QElapsedTimer>
@@ -601,6 +603,44 @@ void TestCaScript::channelDialogAddsAndRemovesRows()
     dialog.reject();
     QCOMPARE(widget.getChannels(), originalInputs);
     QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);
+}
+
+void TestCaScript::channelDialogSavesThroughDesignerCursor_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogSavesThroughDesignerCursor()
+{
+    QFETCH(QString, property);
+    FakeFormWindow form;
+    caScript widget(&form);
+    widget.setInputChannels({{QStringLiteral("epics3://source"), QStringLiteral("source")},
+                             {QStringLiteral("internal://factor"), QString()}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")},
+                              {QStringLiteral("internal://other"), QString()}});
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QDialogButtonBox *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(table);
+    QVERIFY(buttons);
+    QPushButton *save = buttons->button(QDialogButtonBox::Ok);
+    QVERIFY(save);
+    table->item(0, 0)->setText(QStringLiteral("internal://changed"));
+    table->item(0, 1)->setText(QStringLiteral("changed"));
+    const QString secondChannel = table->item(1, 0)->text();
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    save->click();
+    QCOMPARE(accepted.count(), 1);
+    const auto saved = form.fakeCursor()->properties;
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.contains(property));
+    const QJsonDocument expected = QJsonDocument::fromJson(QStringLiteral(
+        "[{\"channel\":\"internal://changed\",\"alias\":\"changed\"},"
+        "{\"channel\":\"%1\",\"alias\":\"\"}]").arg(secondChannel).toUtf8());
+    QVERIFY(QJsonDocument::fromJson(saved.value(property).toString().toUtf8()) == expected);
 }
 
 void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
