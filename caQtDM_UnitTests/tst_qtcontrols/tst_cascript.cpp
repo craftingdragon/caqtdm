@@ -48,6 +48,16 @@ namespace {
 class ScriptFormBuilder : public QFormBuilder
 {
 protected:
+    DomProperty *createProperty(QObject *object, const QString &name, const QVariant &value) override
+    {
+        const int index = object->metaObject()->indexOfProperty(name.toUtf8().constData());
+        if (index >= 0 && object->metaObject()->property(index).isEnumType()) {
+            // Older QFormBuilder versions only serialize enums carried by integer variants.
+            return QFormBuilder::createProperty(object, name, QVariant(value.toInt()));
+        }
+        return QFormBuilder::createProperty(object, name, value);
+    }
+
     QWidget *createWidget(const QString &widgetName, QWidget *parent, const QString &name) override
     {
         if (widgetName == QStringLiteral("caScript")) {
@@ -296,6 +306,10 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     file.close();
 
     QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray savedUi = file.readAll();
+    QVERIFY2(savedUi.contains("name=\"executionMode\""), "Execution mode was omitted while saving the UI.");
+    QVERIFY2(savedUi.contains("name=\"triggerMode\""), "Trigger mode was omitted while saving the UI.");
+    QVERIFY(file.seek(0));
     std::unique_ptr<QWidget> restoredPanel(builder.load(&file));
     QVERIFY(restoredPanel != nullptr);
     caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
