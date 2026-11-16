@@ -6737,6 +6737,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             default: return;
             }
             QVariantList values;
+            QByteArray bytes;
             bool valid = false;
             {
                 QMutexLocker lock(static_cast<QMutex *>(data.mutex));
@@ -6749,6 +6750,9 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 } else if (count >= 0 && (count == 0 || (data.edata.dataB
                     && count <= data.edata.dataSize / elementSize))) {
                     values.reserve(count);
+                    if (data.edata.dimCount == 0 && count > 0) {
+                        bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count * elementSize);
+                    }
                     for (int i = 0; i < count; ++i) {
                         double value;
                         switch (data.edata.fieldtype) {
@@ -6765,6 +6769,9 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 }
             }
             if (valid) {
+                if (data.edata.dimCount == 0) {
+                    scriptWidget->updateInputRawBytes(data.specData[0], bytes);
+                }
                 if (data.edata.dimCount == 2) {
                     const int rows = data.edata.dim[0];
                     const int columns = data.edata.dim[1];

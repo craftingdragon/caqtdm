@@ -470,11 +470,32 @@ void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
     QCOMPARE(input->edata.nelm, 5);
     QCOMPARE(input->edata.valueCount, used);
     QCOMPARE(input->edata.dimCount, 0);
+    const int elementSize = sourceType == genSoftPV::Double ? sizeof(double)
+        : sourceType == genSoftPV::Float ? sizeof(float)
+        : sourceType == genSoftPV::Int ? sizeof(int16_t) : sizeof(int32_t);
+    QByteArray originalBytes;
+    {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        if(used > 0) originalBytes = QByteArray(static_cast<const char *>(input->edata.dataB), used * elementSize);
+    }
+    QVariantList expectedBytes;
+    for(unsigned char byte : originalBytes) expectedBytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(expectedBytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.samples.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing waveform raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect waveform bytes or used length');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
     QSignalSpy finished(&script, &caScript::scriptFinished);
     for (int run = 1; run <= 2; ++run) {
         script.executeScript();
         QTRY_COMPARE(finished.count(), run);
         QVERIFY(finished.last().first().toBool());
+    }
+    if(used > 0) {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), used * elementSize), originalBytes);
     }
 }
 
