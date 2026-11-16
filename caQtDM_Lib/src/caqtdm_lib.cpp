@@ -6794,6 +6794,16 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             scriptWidget->updateInputValue(data.specData[0], values);
         } else if (data.edata.connected && data.edata.fieldtype == caCHAR
                    && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            QByteArray bytes;
+            {
+                QMutexLocker lock(static_cast<QMutex *>(data.mutex));
+                const int count = data.edata.valueCount;
+                if (count < 0 || (count > 0 && (!data.edata.dataB || count > data.edata.dataSize))) return;
+                if (count > 0) {
+                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count);
+                }
+            }
+            scriptWidget->updateInputRawBytes(data.specData[0], bytes);
             scriptWidget->updateInputValue(data.specData[0], String);
         } else if (data.edata.connected && data.edata.valueCount <= 1
                    && data.edata.nelm <= 1 && data.edata.dimCount == 0) {

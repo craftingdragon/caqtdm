@@ -503,22 +503,31 @@ void TestCaQtDM_Lib::scriptReceivesCharWaveform_data()
 {
     QTest::addColumn<int>("used");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("used-length") << 3 << QStringLiteral("ABC");
-    QTest::newRow("one-element") << 1 << QStringLiteral("A");
-    QTest::newRow("empty") << 0 << QString();
+    QTest::addColumn<QString>("sourceValues");
+    QTest::addColumn<QByteArray>("expectedBytes");
+    QTest::newRow("used-length") << 3 << QStringLiteral("ABC")
+        << QStringLiteral("65;66;67;88;89") << QByteArray("ABC");
+    QTest::newRow("one-element") << 1 << QStringLiteral("A")
+        << QStringLiteral("65;66;67;88;89") << QByteArray("A");
+    QTest::newRow("empty") << 0 << QString()
+        << QStringLiteral("65;66;67;88;89") << QByteArray();
+    QTest::newRow("embedded-null-and-high-byte") << 3 << QStringLiteral("A")
+        << QStringLiteral("65;0;255;88;89") << QByteArray::fromHex("4100ff");
 }
 
 void TestCaQtDM_Lib::scriptReceivesCharWaveform()
 {
     QFETCH(int, used);
     QFETCH(QString, expected);
+    QFETCH(QString, sourceValues);
+    QFETCH(QByteArray, expectedBytes);
     m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
     genSoftPV source(m_parentAS);
     source.setVariable(QStringLiteral("scriptCharWaveform"));
     source.setDataType(genSoftPV::Char);
     source.setNelm(5);
     source.setNord(used);
-    source.setValue(QStringLiteral("65;66;67;88;89"));
+    source.setValue(sourceValues);
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
     caScript script(m_parentAS);
@@ -537,12 +546,25 @@ void TestCaQtDM_Lib::scriptReceivesCharWaveform()
     });
     QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
     QTRY_VERIFY(updated);
+    QVariantList bytes;
+    for(unsigned char byte : expectedBytes) bytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(bytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.text.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing char waveform raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect char waveform bytes or used length');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
     QSignalSpy finished(&script, &caScript::scriptFinished);
     for (int run = 1; run <= 2; ++run) {
         script.executeScript();
         QTRY_COMPARE(finished.count(), run);
         QVERIFY(finished.last().first().toBool());
     }
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptCharWaveform"));
+    QVERIFY(input);
+    QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+    QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), used), expectedBytes);
 }
 
 void TestCaQtDM_Lib::scriptReceivesStringWaveform_data()
