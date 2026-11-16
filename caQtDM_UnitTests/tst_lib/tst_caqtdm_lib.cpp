@@ -572,7 +572,7 @@ void TestCaQtDM_Lib::scriptReceivesStringWaveform_data()
 {
     QTest::addColumn<int>("used");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("used-length-with-empty-text") << 3 << QStringLiteral("[\"A\",\"\",\"B\"]");
+    QTest::newRow("used-length-with-empty-text-and-umlaut") << 3 << QStringLiteral("[\"A\",\"\",\"Gr\\uFFFDezi\"]");
     QTest::newRow("one-element") << 1 << QStringLiteral("[\"A\"]");
     QTest::newRow("empty") << 0 << QStringLiteral("[]");
 }
@@ -587,7 +587,7 @@ void TestCaQtDM_Lib::scriptReceivesStringWaveform()
     source.setDataType(genSoftPV::String);
     source.setNelm(5);
     source.setNord(used);
-    source.setValue(QStringLiteral("A;;B;unused;unused"));
+    source.setValue(QStringLiteral("A;;Grüezi;unused;unused"));
     m_caQtDM_Lib->HandleWidget(&source, "", true, true);
 
     caScript script(m_parentAS);
