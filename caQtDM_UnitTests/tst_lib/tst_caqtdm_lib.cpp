@@ -326,6 +326,7 @@ void TestCaQtDM_Lib::scriptSkipsInvalidOutputs_data()
     QTest::newRow("missing") << QStringLiteral("internal://missing") << false << QStringLiteral("99");
     QTest::newRow("external") << QStringLiteral("epics3://notAllowed") << false << QStringLiteral("99");
     QTest::newRow("duplicate-val") << QStringLiteral("internal://duplicate") << true << QStringLiteral("99");
+    QTest::newRow("duplicate-same-value") << QStringLiteral("internal://duplicate") << true << QStringLiteral("100");
     QTest::newRow("invalid-value") << QStringLiteral("internal://duplicate") << false << QStringLiteral("NaN");
 }
 
