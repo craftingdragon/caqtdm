@@ -664,11 +664,35 @@ void TestCaQtDM_Lib::scriptReceivesMatrix()
     QCOMPARE(input->edata.dim[0], rows);
     QCOMPARE(input->edata.dim[1], columns);
     QCOMPARE(input->edata.valueCount, rows * columns);
+    const int elementSize = sourceType == genSoftPV::Double ? sizeof(double)
+        : sourceType == genSoftPV::Float ? sizeof(float)
+        : sourceType == genSoftPV::Int ? sizeof(int16_t)
+        : sourceType == genSoftPV::Long ? sizeof(int32_t) : sizeof(uint8_t);
+    QByteArray originalBytes;
+    {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        if(input->edata.dataB) {
+            originalBytes = QByteArray(static_cast<const char *>(input->edata.dataB), rows * columns * elementSize);
+        }
+    }
+    QVariantList expectedBytes;
+    for(unsigned char byte : originalBytes) expectedBytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(expectedBytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.matrix.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing matrix raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect matrix bytes');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
     QSignalSpy finished(&script, &caScript::scriptFinished);
     for (int run = 1; run <= 2; ++run) {
         script.executeScript();
         QTRY_COMPARE(finished.count(), run);
         QVERIFY(finished.last().first().toBool());
+    }
+    if(!originalBytes.isEmpty()) {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), originalBytes.size()), originalBytes);
     }
 }
 

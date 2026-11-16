@@ -6750,7 +6750,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 } else if (count >= 0 && (count == 0 || (data.edata.dataB
                     && count <= data.edata.dataSize / elementSize))) {
                     values.reserve(count);
-                    if (data.edata.dimCount == 0 && count > 0) {
+                    if (count > 0) {
                         bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count * elementSize);
                     }
                     for (int i = 0; i < count; ++i) {
@@ -6769,9 +6769,6 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 }
             }
             if (valid) {
-                if (data.edata.dimCount == 0) {
-                    scriptWidget->updateInputRawBytes(data.specData[0], bytes);
-                }
                 if (data.edata.dimCount == 2) {
                     const int rows = data.edata.dim[0];
                     const int columns = data.edata.dim[1];
@@ -6783,6 +6780,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     }
                     values = matrix;
                 }
+                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
                 scriptWidget->updateInputValue(data.specData[0], values);
             }
         } else if (data.edata.connected && data.edata.fieldtype == caSTRING
