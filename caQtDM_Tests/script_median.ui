@@ -1,0 +1,373 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>ScriptMedianTest</class>
+ <widget class="QMainWindow" name="ScriptMedianTest">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>740</width>
+    <height>510</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript: Median und Grenzwertzählung (T-01 / T-02)</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="instructions">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>12</y>
+      <width>690</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Ohne IOC: Werte in der Tabelle bearbeiten, mit Enter bestätigen, dann ausführen.</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="samplesLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>50</y>
+      <width>330</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Samples (Double-Waveform)</string>
+    </property>
+   </widget>
+   <widget class="caWaveTable" name="samples">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>85</y>
+      <width>330</width>
+      <height>100</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptSamples</string>
+    </property>
+    <property name="numberOfRows">
+     <number>1</number>
+    </property>
+    <property name="numberOfColumns">
+     <number>5</number>
+    </property>
+    <property name="columnSize">
+     <number>55</number>
+    </property>
+   </widget>
+   <widget class="QLabel" name="thresholdLabel">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>50</y>
+      <width>300</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Grenzwert (streng grösser)</string>
+    </property>
+   </widget>
+   <widget class="caTextEntry" name="threshold">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>85</y>
+      <width>300</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptThreshold</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="nordLabel">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>130</y>
+      <width>320</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Verwendete Elemente NORD (0–5)</string>
+    </property>
+   </widget>
+   <widget class="caTextEntry" name="nord">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>165</y>
+      <width>300</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptSamples.NORD</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="medianLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>215</y>
+      <width>300</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Median</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="medianResult">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>250</y>
+      <width>330</width>
+      <height>40</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptMedian</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="countLabel">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>215</y>
+      <width>300</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Anzahl über Grenzwert</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="countResult">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>250</y>
+      <width>300</width>
+      <height>40</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptAboveThreshold</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="execute">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>310</y>
+      <width>220</width>
+      <height>38</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Skript ausführen</string>
+    </property>
+   </widget>
+   <widget class="caScript" name="medianScript">
+    <property name="geometry">
+     <rect>
+      <x>270</x>
+      <y>305</y>
+      <width>420</width>
+      <height>48</height>
+     </rect>
+    </property>
+    <property name="show">
+     <bool>true</bool>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>var samples = inputs.samples.value.slice();
+var threshold = inputs.threshold.value;
+if (samples.length === 0) {
+    throw new Error("Die Waveform ist leer.");
+}
+var count = 0;
+for (var i = 0; i &lt; samples.length; ++i) {
+    if (samples[i] &gt; threshold) {
+        ++count;
+    }
+}
+samples.sort(function(a, b) { return a - b; });
+var middle = Math.floor(samples.length / 2);
+var median = samples.length % 2
+    ? samples[middle]
+    : (samples[middle - 1] + samples[middle]) / 2;
+outputs.median.value = median;
+outputs.aboveThreshold.value = count;</string>
+    </property>
+    <property name="channels">
+     <string>[{"alias":"samples","channel":"internal://scriptSamples"},{"alias":"threshold","channel":"internal://scriptThreshold"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias":"median","channel":"internal://scriptMedian"},{"alias":"aboveThreshold","channel":"internal://scriptAboveThreshold"}]</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="expected">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>365</y>
+      <width>690</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Soll bei Grenzwert 5: [1,9,3,7,5] → 5 / 2; [8,2,6,4] → 5 / 2; [5] → 5 / 0.</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="emptyExpected">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>395</y>
+      <width>690</width>
+      <height>28</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>NORD = 0: Fehlermeldung; beide zuletzt veröffentlichten Ergebnisse bleiben erhalten.</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="samplesDefinition">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>440</y>
+      <width>345</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptSamples</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>1;9;3;7;5</string>
+    </property>
+    <property name="nelm">
+     <number>5</number>
+    </property>
+    <property name="nord">
+     <number>5</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="thresholdDefinition">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>440</y>
+      <width>345</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptThreshold</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>5</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="medianDefinition">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>470</y>
+      <width>345</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptMedian</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="countDefinition">
+    <property name="geometry">
+     <rect>
+      <x>390</x>
+      <y>470</y>
+      <width>345</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="variable">
+     <string>scriptAboveThreshold</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Long</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>gensoftpv.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>calineedit.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>caLineEdit</extends>
+   <header>catextentry.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caWaveTable</class>
+   <extends>QTableWidget</extends>
+   <header>cawavetable.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections>
+  <connection>
+   <sender>execute</sender>
+   <signal>clicked()</signal>
+   <receiver>medianScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>

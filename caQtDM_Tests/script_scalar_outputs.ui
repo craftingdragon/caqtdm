@@ -169,14 +169,28 @@ Change the factor and execute again to update the result.</string>
     <property name="show">
      <bool>true</bool>
     </property>
+    <property name="triggerMode">
+     <enum>caScript::TriggerMode::AnyInput</enum>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::ExecutionMode::DataDriven</enum>
+    </property>
     <property name="script">
-     <string>if (!(&quot;value&quot; in inputs.score) || !(&quot;value&quot; in inputs.factor)) {
+     <string notr="true">if (!(&quot;value&quot; in inputs.score) || !(&quot;value&quot; in inputs.factor)) {
     throw new Error(&quot;Input values are not available yet&quot;);
 }
-outputs.result.value = inputs.score.value * inputs.factor.value;</string>
+outputs.result.value = inputs.score.value * inputs.factor.value;
+console.log(
+    &quot;freq:&quot;, inputs.freq.value,
+    &quot;connected:&quot;, inputs.freq.connected,
+    &quot;units:&quot;, inputs.freq.units,
+    &quot;precision:&quot;, inputs.freq.precision,
+    &quot;status:&quot;, inputs.freq.status,
+    &quot;severity:&quot;, inputs.freq.severity
+);</string>
     </property>
     <property name="channels">
-     <string>[{&quot;alias&quot;:&quot;score&quot;,&quot;channel&quot;:&quot;epics3://PACMAN:PACMAN_USER_SCORE&quot;},{&quot;alias&quot;:&quot;factor&quot;,&quot;channel&quot;:&quot;internal://scriptFactor&quot;}]</string>
+     <string>[{&quot;alias&quot;:&quot;score&quot;,&quot;channel&quot;:&quot;epics3://PACMAN:PACMAN_USER_SCORE&quot;},{&quot;alias&quot;:&quot;factor&quot;,&quot;channel&quot;:&quot;internal://scriptFactor&quot;},{&quot;alias&quot;:&quot;freq&quot;,&quot;channel&quot;:&quot;SWISSFEL-STATUS:Bunch-1-Exp-Freq-RB&quot;}]</string>
     </property>
     <property name="outputChannels" stdset="0">
      <string>[{&quot;alias&quot;:&quot;result&quot;,&quot;channel&quot;:&quot;internal://scriptScaledScore&quot;}]</string>

@@ -1,0 +1,13 @@
+# Local Cartesian buffer test: calc runs at 10 Hz; FLNK updates a 32-value circular buffer.
+record(calc, "$(P=IPAFAST:)counter") {
+    field(SCAN, ".1 second")
+    field(INPA, "$(P=IPAFAST:)counter NPP")
+    field(CALC, "A+1")
+    field(PREC, "0")
+    field(FLNK, "$(P=IPAFAST:)wave")
+}
+record(compress, "$(P=IPAFAST:)wave") {
+    field(ALG, "Circular Buffer")
+    field(NSAM, "32")
+    field(INP, "$(P=IPAFAST:)counter NPP")
+}

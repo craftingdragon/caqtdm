@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ScriptPacmanControl</class>
+ <widget class="QWidget" name="ScriptPacmanControl">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>720</width>
+    <height>580</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript Pacman control – Internal → caCalc → EPICS</string>
+  </property>
+  <widget class="QLabel" name="instructions">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>10</y>
+     <width>680</width>
+     <height>65</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Enabled 0: direction -1. Enable control to start automatic movement.
+Seeks power pellets, hunts edible ghosts and avoids dangerous ghosts.
+Disabling clears the requested turn; IOC movement may continue.</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label0">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>90</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Enabled (0/1)</string>
+   </property>
+  </widget>
+  <widget class="caLineEdit" name="value0">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>90</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="readOnly">
+    <bool>true</bool>
+   </property>
+   <property name="channel" stdset="0">
+    <string>internal://scriptPacmanEnabled</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label1">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>135</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Score</string>
+   </property>
+  </widget>
+  <widget class="caLineEdit" name="value1">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>135</y>
+     <width>440</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="channel" stdset="0">
+    <string>$(P):PACMAN_USER_SCORE</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label2">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>180</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Actual direction</string>
+   </property>
+  </widget>
+  <widget class="caLineEdit" name="value2">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>180</y>
+     <width>440</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="channel" stdset="0">
+    <string>$(P):PACMAN_USER_DIRECTION</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label3">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>225</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Requested direction</string>
+   </property>
+  </widget>
+  <widget class="caLineEdit" name="value3">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>225</y>
+     <width>440</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="channel" stdset="0">
+    <string>$(P):PACMAN_TRY_DIRECTION</string>
+   </property>
+  </widget>
+  <widget class="caScript" name="pacmanScript">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>285</y>
+     <width>670</width>
+     <height>45</height>
+    </rect>
+   </property>
+   <property name="show">
+    <bool>true</bool>
+   </property>
+   <property name="triggerMode">
+    <enum>caScript::TriggerMode::Periodic</enum>
+   </property>
+   <property name="triggerInterval">
+    <number>100</number>
+   </property>
+   <property name="executionMode">
+    <enum>caScript::ExecutionMode::DataDriven</enum>
+   </property>
+   <property name="script">
+    <string notr="true">// The IOC owns movement; this script only selects a requested direction.
+if (!inputs.enabled.value) {
+    outputs.direction.value = -1;
+    pacmanControlState = null;
+    return;
+}
+const board = inputs.board.value, width = 28, height = 31, cell = 32;
+if (!Array.isArray(board) || board.length !== width * height)
+    throw new Error(&quot;Expected a 28 x 31 Pacman play field&quot;);
+const cx = inputs.x.value + inputs.size.value / 2;
+const cy = inputs.y.value + inputs.size.value / 2;
+const x = Math.floor(cx / cell), y = Math.floor(cy / cell);
+const direction = inputs.direction.value;
+const moving = Number.isInteger(direction) &amp;&amp; direction &gt;= 0 &amp;&amp; direction &lt;= 3;
+// Request turns only at cell centres; the initial READY position is offset.
+if (moving &amp;&amp; (Math.abs(cx - (x * cell + 16)) &gt; 1 || Math.abs(cy - (y * cell + 16)) &gt; 1)) return;
+const steps = [[1,0],[-1,0],[0,-1],[0,1]];
+function index(px, py) {
+    if (px &lt; 0 || px &gt;= width || py &lt; 0 || py &gt;= height) return -1;
+    return py * width + px;
+}
+function walkable(i) { return i &gt;= 0 &amp;&amp; board[i] === 0; }
+function neighbors(i) {
+    const px = i % width, py = Math.floor(i / width), result = [];
+    for (const step of steps) {
+        const n = index(px + step[0], py + step[1]);
+        if (walkable(n)) result.push(n);
+    }
+    return result;
+}
+const current = index(x, y);
+if (!walkable(current)) return;
+// This global belongs to this widget&#x27;s persistent engine, not to an input PV.
+const layout = board.join(&quot;,&quot;);
+if (typeof pacmanControlState === &quot;undefined&quot; || !pacmanControlState || pacmanControlState.layout !== layout)
+    pacmanControlState = {layout:layout, visits:Array(board.length).fill(0), tile:-1, requestTile:-1};
+const state = pacmanControlState;
+if (state.tile !== current) {
+    state.visits[current] = Math.min(32, state.visits[current] + 1);
+    state.tile = current;
+    state.requestTile = -1;
+}
+// Actual VIS values distinguish available power pellets (2) from consumed ones (0).
+const powers = [[1,3],[26,3],[1,23],[26,23]];
+const powerTiles = [], edibleTiles = [], dangerousTiles = [];
+for (let n = 0; n &lt; powers.length; ++n) {
+    const i = index(powers[n][0], powers[n][1]);
+    if (inputs[&quot;power&quot; + n].value === 2 &amp;&amp; walkable(i)) powerTiles.push(i);
+}
+// The expiration timer is a boolean: zero starts the final warning phase.
+const hunt = inputs.frightTimer.value !== 0;
+for (const ghost of [&quot;blinky&quot;, &quot;pinky&quot;, &quot;inky&quot;, &quot;clyde&quot;]) {
+    const mode = inputs[ghost + &quot;_mode&quot;].value;
+    const size = inputs[ghost + &quot;_size&quot;].value;
+    const gx = Math.floor((inputs[ghost + &quot;_x&quot;].value + size / 2) / cell);
+    const gy = Math.floor((inputs[ghost + &quot;_y&quot;].value + size / 2) / cell);
+    const i = index(gx, gy);
+    if (!walkable(i)) continue;
+    if (mode === 1 || mode === 2 || (mode === 3 &amp;&amp; !hunt)) dangerousTiles.push(i);
+    else if (mode === 3 &amp;&amp; hunt) edibleTiles.push(i);
+}
+function distanceMap(sources) {
+    const distances = Array(board.length).fill(-1), queue = [];
+    for (const i of sources) {
+        if (distances[i] === -1) { distances[i] = 0; queue.push(i); }
+    }
+    for (let head = 0; head &lt; queue.length; ++head) {
+        for (const n of neighbors(queue[head])) {
+            if (distances[n] === -1) { distances[n] = distances[queue[head]] + 1; queue.push(n); }
+        }
+    }
+    return distances;
+}
+const distances = distanceMap(dangerousTiles);
+const powerDistances = distanceMap(powerTiles), edibleDistances = distanceMap(edibleTiles);
+function ghostDistance(i) { return distances[i] &lt; 0 ? board.length : distances[i]; }
+function targetReward(map, i, weight) {
+    return map[i] &lt; 0 ? 0 : weight / (1 + map[i]);
+}
+// Inspect the next corridor up to a junction, dead end, or eight tiles ahead.
+function corridor(first) {
+    let previous = current, next = first, margin = board.length;
+    for (let depth = 1; depth &lt;= 8; ++depth) {
+        margin = Math.min(margin, ghostDistance(next) - depth);
+        const exits = neighbors(next).filter(n =&gt; n !== previous);
+        if (exits.length !== 1) return {margin:margin, deadEnd:exits.length === 0};
+        previous = next;
+        next = exits[0];
+    }
+    return {margin:margin, deadEnd:false};
+}
+// Compare escape paths beyond the first junction, with all dangerous ghosts.
+// Equal tile speeds are a conservative estimate, not a ghost AI simulation.
+function escape(first) {
+    const seen = Array(board.length).fill(false);
+    const nodes = [first], depths = [1], margins = [ghostDistance(first) - 1];
+    seen[current] = seen[first] = true;
+    let bestDepth = 0, bestMargin = -board.length;
+    for (let head = 0; head &lt; nodes.length; ++head) {
+        const i = nodes[head], depth = depths[head], margin = margins[head];
+        if (margin &lt;= 0 || (depth === 1 &amp;&amp; ghostDistance(i) &lt;= 1)) continue;
+        if (depth &gt; bestDepth || (depth === bestDepth &amp;&amp; margin &gt; bestMargin)) {
+            bestDepth = depth;
+            bestMargin = margin;
+        }
+        if (depth === 8) continue;
+        for (const n of neighbors(i)) {
+            if (seen[n]) continue;
+            const nextMargin = Math.min(margin, ghostDistance(n) - depth - 1);
+            if (nextMargin &lt;= 0) continue;
+            seen[n] = true;
+            nodes.push(n); depths.push(depth + 1); margins.push(nextMargin);
+        }
+    }
+    return {depth:bestDepth, margin:bestMargin};
+}
+// Prefer nearby, less-visited tiles rather than circling the same safe corner.
+function exploration(first) {
+    const seen = Array(board.length).fill(false), nodes = [first], depths = [1];
+    seen[current] = seen[first] = true;
+    let reward = 0;
+    for (let head = 0; head &lt; nodes.length; ++head) {
+        const i = nodes[head], depth = depths[head];
+        if (ghostDistance(i) &lt;= 1) continue;
+        reward = Math.max(reward, 8 / ((1 + state.visits[i]) * depth));
+        if (depth === 8) continue;
+        for (const n of neighbors(i)) {
+            if (!seen[n]) { seen[n] = true; nodes.push(n); depths.push(depth + 1); }
+        }
+    }
+    return reward;
+}
+const right = [3,2,0,1], left = [2,3,1,0], reverse = [1,0,3,2];
+const choices = moving ? [direction, right[direction], left[direction], reverse[direction]] : [0,2,1,3];
+const threatened = ghostDistance(current) &lt;= 6;
+// Safety wins over exploration/food; never ban a better reversing escape.
+const candidates = choices.map(next =&gt; {
+    const i = index(x + steps[next][0], y + steps[next][1]);
+    return {next:next, i:i, route:walkable(i) ? corridor(i) : null,
+        escape:walkable(i) &amp;&amp; threatened ? escape(i) : {depth:0}};
+}).filter(c =&gt; c.route !== null);
+const safestDepth = candidates.reduce((depth, c) =&gt; Math.max(depth, c.escape.depth), 0);
+const safeAlternative = moving &amp;&amp; candidates.some(c =&gt; c.next !== reverse[direction]
+    &amp;&amp; c.escape.depth === safestDepth &amp;&amp; ghostDistance(c.i) &gt; 1
+    &amp;&amp; c.route.margin &gt; 0 &amp;&amp; !c.route.deadEnd);
+let best = -1, bestScore = -Infinity, bestDistance = board.length;
+for (const candidate of candidates) {
+    const next = candidate.next, i = candidate.i, route = candidate.route;
+    if (candidate.escape.depth &lt; safestDepth) continue;
+    if (safeAlternative &amp;&amp; next === reverse[direction]) continue;
+    const distance = ghostDistance(i);
+    let score = 5 * exploration(i) - 3 * state.visits[i];
+    // Safety penalties below dominate food and hunting rewards.
+    score += targetReward(powerDistances, i, threatened ? 80 : 40);
+    score += targetReward(edibleDistances, i, 90);
+    if (threatened) {
+        score += 18 * Math.min(distance, 8) + 8 * Math.min(route.margin, 4);
+        if (route.deadEnd) score -= 45;
+        if (route.margin &lt;= 0) score -= 100;
+    }
+    if (distance &lt;= 1) score -= 10000;
+    if (moving &amp;&amp; next === reverse[direction]) score -= 2;
+    if (moving &amp;&amp; next === direction) score += 0.25;
+    if (score &gt; bestScore) { best = next; bestScore = score; bestDistance = distance; }
+}
+// The existing Internal output is also an input: replace stale pending turns,
+// including a change back to straight ahead while the IOC still moves straight.
+if (best &gt;= 0 &amp;&amp; (!moving || best !== direction || inputs.requested.value !== best)) {
+    const now = Date.now();
+    // Allow one-second retries if a command was lost, without flooding monitors.
+    if (state.requestTile === current &amp;&amp; state.request === best &amp;&amp; now - state.requestAt &lt; 1000) return;
+    state.requestTile = current;
+    state.request = best;
+    state.requestAt = now;
+    outputs.direction.value = best;
+    console.log(&quot;Pacman direction&quot;, best, &quot;at tile&quot;, x, y, &quot;ghost distance&quot;, bestDistance);
+}
+</string>
+   </property>
+   <property name="channels">
+    <string>[{&quot;alias&quot;:&quot;enabled&quot;,&quot;channel&quot;:&quot;internal://scriptPacmanEnabled&quot;},{&quot;alias&quot;:&quot;board&quot;,&quot;channel&quot;:&quot;$(P):PACMAN_PLAY_FIELD&quot;},{&quot;alias&quot;:&quot;x&quot;,&quot;channel&quot;:&quot;$(P):PACMAN_USER_X&quot;},{&quot;alias&quot;:&quot;y&quot;,&quot;channel&quot;:&quot;$(P):PACMAN_USER_Y&quot;},{&quot;alias&quot;:&quot;size&quot;,&quot;channel&quot;:&quot;$(P):PACMAN_PACMAN_SIZE&quot;},{&quot;alias&quot;:&quot;direction&quot;,&quot;channel&quot;:&quot;$(P):PACMAN_USER_DIRECTION&quot;},{&quot;alias&quot;:&quot;blinky_x&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_BLINKY_X&quot;},{&quot;alias&quot;:&quot;blinky_y&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_BLINKY_Y&quot;},{&quot;alias&quot;:&quot;blinky_size&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_BLINKY_SIZE&quot;},{&quot;alias&quot;:&quot;blinky_mode&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_BLINKY_MODE&quot;},{&quot;alias&quot;:&quot;pinky_x&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_PINKY_X&quot;},{&quot;alias&quot;:&quot;pinky_y&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_PINKY_Y&quot;},{&quot;alias&quot;:&quot;pinky_size&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_PINKY_SIZE&quot;},{&quot;alias&quot;:&quot;pinky_mode&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_PINKY_MODE&quot;},{&quot;alias&quot;:&quot;inky_x&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_INKY_X&quot;},{&quot;alias&quot;:&quot;inky_y&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_INKY_Y&quot;},{&quot;alias&quot;:&quot;inky_size&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_INKY_SIZE&quot;},{&quot;alias&quot;:&quot;inky_mode&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_INKY_MODE&quot;},{&quot;alias&quot;:&quot;clyde_x&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_CLYDE_X&quot;},{&quot;alias&quot;:&quot;clyde_y&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_CLYDE_Y&quot;},{&quot;alias&quot;:&quot;clyde_size&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_CLYDE_SIZE&quot;},{&quot;alias&quot;:&quot;clyde_mode&quot;,&quot;channel&quot;:&quot;$(P):GHOSTS_CLYDE_MODE&quot;},{&quot;alias&quot;:&quot;power0&quot;,&quot;channel&quot;:&quot;$(P):VIS_3_2&quot;},{&quot;alias&quot;:&quot;power1&quot;,&quot;channel&quot;:&quot;$(P):VIS_8_2&quot;},{&quot;alias&quot;:&quot;power2&quot;,&quot;channel&quot;:&quot;$(P):VIS_19_6&quot;},{&quot;alias&quot;:&quot;power3&quot;,&quot;channel&quot;:&quot;$(P):VIS_10_7&quot;},{&quot;alias&quot;:&quot;frightTimer&quot;,&quot;channel&quot;:&quot;$(P):GAME_FRIGHT_EXPIRATION_TIMER&quot;},{&quot;alias&quot;:&quot;requested&quot;,&quot;channel&quot;:&quot;internal://scriptPacmanDirection&quot;}]</string>
+   </property>
+   <property name="outputChannels" stdset="0">
+    <string>[{&quot;alias&quot;:&quot;direction&quot;,&quot;channel&quot;:&quot;internal://scriptPacmanDirection&quot;}]</string>
+   </property>
+  </widget>
+  <widget class="caCalc" name="directionBridge">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>345</y>
+     <width>670</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="variable">
+    <string>scriptPacmanDirectionBridge</string>
+   </property>
+   <property name="calc">
+    <string>A</string>
+   </property>
+   <property name="channel" stdset="0">
+    <string>internal://scriptPacmanDirection</string>
+   </property>
+   <property name="initialValue">
+    <double>-1.000000000000000</double>
+   </property>
+   <property name="eventSignal">
+    <enum>caCalc::eventsignal::onAnyChange</enum>
+   </property>
+  </widget>
+  <widget class="QLabel" name="writerLabel">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>390</y>
+     <width>220</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>EPICS write bridge</string>
+   </property>
+  </widget>
+  <widget class="caTextEntry" name="directionWriter">
+   <property name="geometry">
+    <rect>
+     <x>250</x>
+     <y>390</y>
+     <width>440</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="channel" stdset="0">
+    <string>$(P):PACMAN_TRY_DIRECTION</string>
+   </property>
+  </widget>
+  <widget class="genSoftPV" name="source0">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>450</y>
+     <width>670</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="variable">
+    <string>scriptPacmanEnabled</string>
+   </property>
+   <property name="dataType">
+    <enum>genSoftPV::DataType::Double</enum>
+   </property>
+   <property name="value">
+    <string>0</string>
+   </property>
+   <property name="mode">
+    <enum>genSoftPV::Constant</enum>
+   </property>
+   <property name="persistent">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="genSoftPV" name="source1">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>495</y>
+     <width>670</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="variable">
+    <string>scriptPacmanDirection</string>
+   </property>
+   <property name="dataType">
+    <enum>genSoftPV::DataType::Double</enum>
+   </property>
+   <property name="value">
+    <string>-1</string>
+   </property>
+   <property name="mode">
+    <enum>genSoftPV::Constant</enum>
+   </property>
+   <property name="persistent">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="caToggleButton" name="enabledToggle">
+   <property name="geometry">
+    <rect>
+     <x>490</x>
+     <y>90</y>
+     <width>200</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Enable control</string>
+   </property>
+   <property name="channel" stdset="0">
+    <string>internal://scriptPacmanEnabled</string>
+   </property>
+   <property name="trueValue">
+    <string>1</string>
+   </property>
+   <property name="falseValue">
+    <string>0</string>
+   </property>
+  </widget>
+  <zorder>instructions</zorder>
+  <zorder>label0</zorder>
+  <zorder>value0</zorder>
+  <zorder>label1</zorder>
+  <zorder>value1</zorder>
+  <zorder>label2</zorder>
+  <zorder>value2</zorder>
+  <zorder>label3</zorder>
+  <zorder>value3</zorder>
+  <zorder>directionBridge</zorder>
+  <zorder>writerLabel</zorder>
+  <zorder>directionWriter</zorder>
+  <zorder>source0</zorder>
+  <zorder>source1</zorder>
+  <zorder>enabledToggle</zorder>
+  <zorder>pacmanScript</zorder>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>caLineEdit</extends>
+   <header>caTextEntry</header>
+  </customwidget>
+  <customwidget>
+   <class>caToggleButton</class>
+   <extends>QCheckBox</extends>
+   <header>caToggleButton</header>
+  </customwidget>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>caLineEdit</header>
+  </customwidget>
+  <customwidget>
+   <class>caCalc</class>
+   <extends>QLabel</extends>
+   <header>caCalc</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>genSoftPV</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>directionBridge</sender>
+   <signal>emitSignal(double)</signal>
+   <receiver>directionWriter</receiver>
+   <slot>setValue(double)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+</ui>
