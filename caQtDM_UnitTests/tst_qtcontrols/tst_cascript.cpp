@@ -1031,6 +1031,41 @@ void TestCaScript::consoleMessagesPreserveLevelsAndSuccess()
     }
 }
 
+void TestCaScript::consoleFloodIsBoundedAndStillTimesOut()
+{
+    caScript widget;
+    QSignalSpy info(&widget, &caScript::scriptInfo);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.setScript("for (var i = 0; i < 1000; ++i) { console.log('xyz'); }");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(info.count(), 100);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("Console message limit"));
+
+    info.clear();
+    warnings.clear();
+    widget.setScript("while (true) { console.log('xyz'); }");
+    int ticks = 0;
+    QTimer heartbeat;
+    connect(&heartbeat, &QTimer::timeout, &widget, [&]() { ++ticks; });
+    heartbeat.start(20);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    widget.executeScript();
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 3000);
+    QVERIFY(!finished.last().first().toBool());
+    QVERIFY(elapsed.elapsed() < 2500);
+    QVERIFY(ticks >= 5);
+    QCOMPARE(info.count(), 100);
+    QCOMPARE(warnings.count(), 2); // Console limit and 100 ms runtime warning.
+    QCOMPARE(errors.count(), 1);
+    QVERIFY(errors.first().first().toString().contains("1000 ms"));
+}
+
 void TestCaScript::scriptDiagnostics_data()
 {
     QTest::addColumn<QString>("script");

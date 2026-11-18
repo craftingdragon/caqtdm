@@ -113,14 +113,30 @@ class CaScriptConsole : public QObject
 
 public:
     explicit CaScriptConsole(QObject *parent) : QObject(parent) {}
+    void reset() { m_messageCount = 0; }
 
 public slots:
-    void log(const QString &text) { emit message(QtInfoMsg, text); }
-    void warn(const QString &text) { emit message(QtWarningMsg, text); }
-    void error(const QString &text) { emit message(QtCriticalMsg, text); }
+    void log(const QString &text) { send(QtInfoMsg, text); }
+    void warn(const QString &text) { send(QtWarningMsg, text); }
+    void error(const QString &text) { send(QtCriticalMsg, text); }
 
 signals:
     void message(int level, const QString &text);
+
+private:
+    void send(int level, const QString &text)
+    {
+        // Bound queued GUI messages before they leave the worker thread.
+        if (m_messageCount < 100) {
+            ++m_messageCount;
+            emit message(level, text);
+        } else if (m_messageCount == 100) {
+            ++m_messageCount;
+            emit message(QtWarningMsg, tr("Console message limit (100 per execution) reached; further console messages suppressed."));
+        }
+    }
+
+    int m_messageCount = 0;
 };
 
 class CaScriptWorker : public QObject
@@ -165,6 +181,7 @@ public slots:
             if (!m_engine) m_engine = new QJSEngine(this);
             m_engine->setInterrupted(m_interruptRequested);
         }
+        m_console->reset();
         QJSValue consoleFactory = m_engine->evaluate(QStringLiteral(
             "(function(sink) { function text(args) { return Array.prototype.map.call(args, String).join(' '); }"
             "return {log: function() { sink.log(text(arguments)); },"
