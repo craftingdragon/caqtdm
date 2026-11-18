@@ -4,6 +4,7 @@
 |---|---|---|
 | `script_scalar_outputs.ui` | EPICS score × Internal factor; metadata. | [Expected values and inputs](script_scalar_outputs.md) |
 | `script_median.ui` | Median and count above a threshold. | [Test data and waveform limitation](script_median.md) |
+| `script_conversions.ui` | Seven-by-seven scalar conversion matrix, decoding and array rejection in tabs. | [Inputs and expected results](script_conversions.md) |
 | `script_console_conversions.ui` | Scalar conversions and bounded console flooding. | [Expected results and timeout checks](script_console_conversions.md) |
 | `script_pacman_control.ui` | Direction selection using ghost distances. | [Macros and controls](script_pacman_control.md) |
 | `script_string_encoding.ui` | ASCII, UTF-8 and Latin-1 display; no caScript. | [Bytes and expected displays](script_string_encoding.md) |
