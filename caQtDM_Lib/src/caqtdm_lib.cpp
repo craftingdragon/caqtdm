@@ -30,6 +30,7 @@
 #include "caQtDM_Lib_global.h"
 #include <stdint.h>
 #include <limits>
+#include <mutex>
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
@@ -50,6 +51,7 @@
 
 #include <QObject>
 #include <QMutexLocker>
+#include <QPointer>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -5493,9 +5495,6 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                                        const QString& String,
                                        const knobData& data)
 {
-    Q_UNUSED(indx);
-    Q_UNUSED(fec);
-
     if(!AllowsUpdate) return;
 
     // thread mutexknobdata emits to all instances of this class, later we will have to filter on the emit side to enhance performance
@@ -6680,6 +6679,32 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
     } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
+        const bool readsBuffer = data.edata.connected
+            && (data.edata.fieldtype == caSTRING || data.edata.nelm > 1 || data.edata.dimCount == 2);
+        std::unique_lock<QMutex> bufferLock;
+        if (readsBuffer) {
+            auto *channelMutex = static_cast<QMutex *>(data.mutex);
+            if (!channelMutex || indx < 0 || indx >= mutexKnobDataP->GetMutexKnobDataSize()) return;
+            bufferLock = std::unique_lock<QMutex>(*channelMutex, std::try_to_lock);
+            if (!bufferLock.owns_lock()) {
+                // A synchronous publisher can still hold the mutex on this thread.
+                const QPointer<caScript> target(scriptWidget);
+                const int monitorCount = data.edata.monitorCount;
+                QTimer::singleShot(1, this, [this, target, indx, monitorCount, units, fec, String] {
+                    if (!target || !AllowsUpdate) return;
+                    const knobData current = mutexKnobDataP->GetMutexKnobData(indx);
+                    if (current.index == indx && current.dispW == target.data()
+                        && current.edata.monitorCount == monitorCount) {
+                        Callback_UpdateWidget(indx, target.data(), units, fec, String, current);
+                    }
+                });
+                return;
+            }
+            const knobData current = mutexKnobDataP->GetMutexKnobData(indx);
+            if (current.index != indx || current.dispW != scriptWidget || current.mutex != data.mutex
+                || current.edata.monitorCount != data.edata.monitorCount || current.edata.dataB != data.edata.dataB) return;
+        }
+
         QVariantMap metadata = {
             {QStringLiteral("connected"), bool(data.edata.connected)},
             {QStringLiteral("status"), int(data.edata.status)},
@@ -6740,7 +6765,6 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             QByteArray bytes;
             bool valid = false;
             {
-                QMutexLocker lock(static_cast<QMutex *>(data.mutex));
                 const int count = data.edata.valueCount;
                 const bool singleWaveformValue = data.edata.dimCount == 0 && count == 1;
                 const bool epics3SingleValue = singleWaveformValue && qstrcmp(data.pluginName, "epics3") == 0;
@@ -6799,6 +6823,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     valid = true;
                 }
             }
+            bufferLock.unlock();
             if (valid) {
                 if (data.edata.dimCount == 2) {
                     const int rows = data.edata.dim[0];
@@ -6817,6 +6842,7 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         } else if (data.edata.connected && data.edata.fieldtype == caSTRING
                    && data.edata.nelm > 1 && data.edata.dimCount == 0
                    && data.edata.valueCount >= 0) {
+            bufferLock.unlock();
             const QStringList texts = String.split(QChar(27));
             QVariantList values;
             for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
@@ -6827,13 +6853,13 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                    && data.edata.nelm > 1 && data.edata.dimCount == 0) {
             QByteArray bytes;
             {
-                QMutexLocker lock(static_cast<QMutex *>(data.mutex));
                 const int count = data.edata.valueCount;
                 if (count < 0 || (count > 0 && (!data.edata.dataB || count > data.edata.dataSize))) return;
                 if (count > 0) {
                     bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count);
                 }
             }
+            bufferLock.unlock();
             scriptWidget->updateInputRawBytes(data.specData[0], bytes);
             scriptWidget->updateInputValue(data.specData[0], String);
         } else if (data.edata.connected && data.edata.valueCount <= 1
@@ -6846,15 +6872,13 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             } else if (data.edata.fieldtype == caLONG) {
                 scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));
             } else if (data.edata.fieldtype == caSTRING) {
-                QMutex *dataMutex = static_cast<QMutex *>(data.mutex);
-                dataMutex->lock();
                 QByteArray bytes;
                 if (data.edata.dataB && data.edata.dataSize > 0) {
                     bytes = QByteArray(static_cast<const char *>(data.edata.dataB), data.edata.dataSize);
                     const int terminator = bytes.indexOf('\0');
                     if (terminator >= 0) bytes.truncate(terminator);
                 }
-                dataMutex->unlock();
+                bufferLock.unlock();
                 scriptWidget->updateInputRawBytes(data.specData[0], bytes);
                 scriptWidget->updateInputValue(data.specData[0], String);
             }
