@@ -1,0 +1,5004 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>ScriptConversions</class>
+ <widget class="QMainWindow" name="ScriptConversions">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>960</width>
+    <height>650</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript: conversion matrix</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="intro">
+    <property name="geometry">
+     <rect>
+      <x>15</x>
+      <y>10</y>
+      <width>925</width>
+      <height>45</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>No IOC required. Each tab has its own inputs and script. Confirm edits with Enter, then run. Errors are shown per conversion; the source is unchanged.</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QTabWidget" name="conversionTabs">
+    <property name="geometry">
+     <rect>
+      <x>15</x>
+      <y>65</y>
+      <width>930</width>
+      <height>565</height>
+     </rect>
+    </property>
+    <property name="currentIndex">
+     <number>0</number>
+    </property>
+    <widget class="QWidget" name="StringTab">
+     <attribute name="title">
+      <string>String</string>
+     </attribute>
+     <widget class="QLabel" name="StringDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (String)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="StringInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringtoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="StringtoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionStringtoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="StringRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run String checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="StringHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42.5: integer targets = number: 43; Float / Double = number: 42.5; String = string: 42.5. Try abc: String is preserved and numeric targets fail.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="ShortTab">
+     <attribute name="title">
+      <string>Short</string>
+     </attribute>
+     <widget class="QLabel" name="ShortDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShortInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Short)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="ShortInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShorttoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ShorttoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionShorttoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="ShortRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Short checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ShortHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42: numeric targets return number: 42 and String returns string: 42. String input also accepts 42.5; try abc to reject numeric targets while preserving String.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="LongTab">
+     <attribute name="title">
+      <string>Long</string>
+     </attribute>
+     <widget class="QLabel" name="LongDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Long)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="LongInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongtoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="LongtoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionLongtoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="LongRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Long checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="LongHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42: numeric targets return number: 42 and String returns string: 42. String input also accepts 42.5; try abc to reject numeric targets while preserving String.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="CharTab">
+     <attribute name="title">
+      <string>Char</string>
+     </attribute>
+     <widget class="QLabel" name="CharDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="CharInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Char)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="CharInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ChartoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ChartoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionChartoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="CharRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Char checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="CharHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42: numeric targets return number: 42 and String returns string: 42. String input also accepts 42.5; try abc to reject numeric targets while preserving String.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="EnumTab">
+     <attribute name="title">
+      <string>Enum</string>
+     </attribute>
+     <widget class="QLabel" name="EnumDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Enum)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="EnumInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumtoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="EnumtoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionEnumtoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="EnumRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Enum checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="EnumHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42: numeric targets return number: 42 and String returns string: 42. String input also accepts 42.5; try abc to reject numeric targets while preserving String.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="FloatTab">
+     <attribute name="title">
+      <string>Float</string>
+     </attribute>
+     <widget class="QLabel" name="FloatDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloatInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Float)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="FloatInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloattoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="FloattoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionFloattoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="FloatRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Float checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="FloatHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>At 42: numeric targets return number: 42 and String returns string: 42. String input also accepts 42.5; try abc to reject numeric targets while preserving String.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="DoubleTab">
+     <attribute name="title">
+      <string>Double</string>
+     </attribute>
+     <widget class="QLabel" name="DoubleDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double source → all seven scalar targets. Each cell shows the JavaScript result type and value, or the caught error.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubleInputLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>55</y>
+        <width>160</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Input (Double)</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caTextEntry" name="DoubleInput">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>55</y>
+        <width>700</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionInputDouble</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoStringLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>String</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoStringResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoString</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoShortLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Short</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoShortResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoShort</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoLongLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Long</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoLongResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoLong</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoCharLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Char</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoCharResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoChar</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoEnumLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enum</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoEnumResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoEnum</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoFloatLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Float</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoFloatResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoFloat</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubletoDoubleLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>352</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Double</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="DoubletoDoubleResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>352</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionDoubletoDouble</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="DoubleRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Double checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="DoubleHints">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>400</y>
+        <width>865</width>
+        <height>60</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Try 42.5, -1.5, 255.5, 32768, 65536, 2147483648 and 1e39. Integer targets round halfway away from zero and reject overflow.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="BytesTab">
+     <attribute name="title">
+      <string>Bytes / text</string>
+     </attribute>
+     <widget class="QLabel" name="bytesDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>75</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Compare original bytes and explicit decoding. Results are written to Internal String channels: their Latin-1 encoding and subsequent display decoding can distort text again. Inspect the warnings too.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Bytesutf8RawLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>utf8 / Raw</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Bytesutf8RawResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionBytesutf8Raw</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Bytesutf8Utf8Label">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>utf8 / Utf8</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Bytesutf8Utf8Result">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionBytesutf8Utf8</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Bytesutf8Latin1Label">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>utf8 / Latin1</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Bytesutf8Latin1Result">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionBytesutf8Latin1</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Byteslatin1RawLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>latin1 / Raw</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Byteslatin1RawResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionByteslatin1Raw</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Byteslatin1Utf8Label">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>latin1 / Utf8</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Byteslatin1Utf8Result">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionByteslatin1Utf8</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="Byteslatin1Latin1Label">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>latin1 / Latin1</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="Byteslatin1Latin1Result">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionByteslatin1Latin1</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="BytesRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Bytes checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="bytesExpected">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>370</y>
+        <width>865</width>
+        <height>90</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Raw: UTF-8 = 47 72 c3 bc 65 7a 69; Latin-1 = 47 72 fc 65 7a 69. Latin-1 / fromUtf8 produces a replacement character: expect a Latin-1 output warning and the previous result to remain. Rendered text also tests the output/display encoding path.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="ArraysTab">
+     <attribute name="title">
+      <string>Arrays / matrix</string>
+     </attribute>
+     <widget class="QLabel" name="arraysDescription">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>10</y>
+        <width>865</width>
+        <height>75</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>convert() supports scalars only. These snapshots are arrays, not numbers. Check all seven targets for each input without changing the original arrays. Element-wise processing belongs in the script.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArrayswaveValueLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>wave / value</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArrayswaveValueResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>100</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArrayswaveValue</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArrayswaveCheckLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>142</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>wave / 7 targets</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArrayswaveCheckResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>142</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArrayswaveCheck</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArraysmatrixValueLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>184</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>matrix / value</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArraysmatrixValueResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>184</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArraysmatrixValue</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArraysmatrixCheckLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>226</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>matrix / 7 targets</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArraysmatrixCheckResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>226</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArraysmatrixCheck</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArraysstringsValueLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>268</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>strings / value</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArraysstringsValueResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>268</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArraysstringsValue</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="ArraysstringsCheckLabel">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>310</y>
+        <width>160</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>strings / 7 targets</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+     <widget class="caLineEdit" name="ArraysstringsCheckResult">
+      <property name="geometry">
+       <rect>
+        <x>185</x>
+        <y>310</y>
+        <width>700</width>
+        <height>35</height>
+       </rect>
+      </property>
+      <property name="channel">
+       <string>internal://conversionArraysstringsCheck</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="ArraysRun">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>470</y>
+        <width>865</width>
+        <height>36</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Run Arrays checks</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="arraysExpected">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>370</y>
+        <width>865</width>
+        <height>80</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Expected originals: [1,2,3], [[1,2],[3,4]], ["one","two"]. All three report 7/7 rejected. No waveform editing is needed.</string>
+      </property>
+      <property name="wordWrap">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </widget>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>42.5</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionStringtoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionStringtoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="StringScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputString"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionStringtoString"}, {"alias": "toShort", "channel": "internal://conversionStringtoShort"}, {"alias": "toLong", "channel": "internal://conversionStringtoLong"}, {"alias": "toChar", "channel": "internal://conversionStringtoChar"}, {"alias": "toEnum", "channel": "internal://conversionStringtoEnum"}, {"alias": "toFloat", "channel": "internal://conversionStringtoFloat"}, {"alias": "toDouble", "channel": "internal://conversionStringtoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Int</enum>
+    </property>
+    <property name="value">
+     <string>42</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionShorttoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionShorttoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="ShortScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputShort"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionShorttoString"}, {"alias": "toShort", "channel": "internal://conversionShorttoShort"}, {"alias": "toLong", "channel": "internal://conversionShorttoLong"}, {"alias": "toChar", "channel": "internal://conversionShorttoChar"}, {"alias": "toEnum", "channel": "internal://conversionShorttoEnum"}, {"alias": "toFloat", "channel": "internal://conversionShorttoFloat"}, {"alias": "toDouble", "channel": "internal://conversionShorttoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Long</enum>
+    </property>
+    <property name="value">
+     <string>42</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionLongtoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionLongtoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="LongScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputLong"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionLongtoString"}, {"alias": "toShort", "channel": "internal://conversionLongtoShort"}, {"alias": "toLong", "channel": "internal://conversionLongtoLong"}, {"alias": "toChar", "channel": "internal://conversionLongtoChar"}, {"alias": "toEnum", "channel": "internal://conversionLongtoEnum"}, {"alias": "toFloat", "channel": "internal://conversionLongtoFloat"}, {"alias": "toDouble", "channel": "internal://conversionLongtoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Char</enum>
+    </property>
+    <property name="value">
+     <string>42</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionChartoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionChartoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="CharScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputChar"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionChartoString"}, {"alias": "toShort", "channel": "internal://conversionChartoShort"}, {"alias": "toLong", "channel": "internal://conversionChartoLong"}, {"alias": "toChar", "channel": "internal://conversionChartoChar"}, {"alias": "toEnum", "channel": "internal://conversionChartoEnum"}, {"alias": "toFloat", "channel": "internal://conversionChartoFloat"}, {"alias": "toDouble", "channel": "internal://conversionChartoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Enum</enum>
+    </property>
+    <property name="value">
+     <string>42</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionEnumtoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionEnumtoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="EnumScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputEnum"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionEnumtoString"}, {"alias": "toShort", "channel": "internal://conversionEnumtoShort"}, {"alias": "toLong", "channel": "internal://conversionEnumtoLong"}, {"alias": "toChar", "channel": "internal://conversionEnumtoChar"}, {"alias": "toEnum", "channel": "internal://conversionEnumtoEnum"}, {"alias": "toFloat", "channel": "internal://conversionEnumtoFloat"}, {"alias": "toDouble", "channel": "internal://conversionEnumtoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Float</enum>
+    </property>
+    <property name="value">
+     <string>42</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionFloattoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionFloattoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="FloatScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputFloat"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionFloattoString"}, {"alias": "toShort", "channel": "internal://conversionFloattoShort"}, {"alias": "toLong", "channel": "internal://conversionFloattoLong"}, {"alias": "toChar", "channel": "internal://conversionFloattoChar"}, {"alias": "toEnum", "channel": "internal://conversionFloattoEnum"}, {"alias": "toFloat", "channel": "internal://conversionFloattoFloat"}, {"alias": "toDouble", "channel": "internal://conversionFloattoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionInputDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionInputDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>42.5</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionDoubletoDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionDoubletoDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="DoubleScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://conversionInputDouble"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "toString", "channel": "internal://conversionDoubletoString"}, {"alias": "toShort", "channel": "internal://conversionDoubletoShort"}, {"alias": "toLong", "channel": "internal://conversionDoubletoLong"}, {"alias": "toChar", "channel": "internal://conversionDoubletoChar"}, {"alias": "toEnum", "channel": "internal://conversionDoubletoEnum"}, {"alias": "toFloat", "channel": "internal://conversionDoubletoFloat"}, {"alias": "toDouble", "channel": "internal://conversionDoubletoDouble"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>const source = inputs.source;
+try { const v = source.convert(EpicsType.String); outputs.toString.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toString.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Short); outputs.toShort.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toShort.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Long); outputs.toLong.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toLong.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Char); outputs.toChar.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toChar.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Enum); outputs.toEnum.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toEnum.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Float); outputs.toFloat.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toFloat.value = e.name + ': ' + e.message; }
+try { const v = source.convert(EpicsType.Double); outputs.toDouble.value = typeof v + ': ' + String(v); }
+catch (e) { outputs.toDouble.value = e.name + ': ' + e.message; }
+console.log('Source after conversions:', source.value);</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionBytesutf8Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionBytesutf8</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Char</enum>
+    </property>
+    <property name="value">
+     <string>71;114;195;188;101;122;105</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+    <property name="nelm">
+     <number>7</number>
+    </property>
+    <property name="nord">
+     <number>7</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionByteslatin1Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionByteslatin1</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Char</enum>
+    </property>
+    <property name="value">
+     <string>71;114;252;101;122;105</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+    <property name="nelm">
+     <number>6</number>
+    </property>
+    <property name="nord">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionBytesutf8RawDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionBytesutf8Raw</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionBytesutf8Utf8Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionBytesutf8Utf8</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionBytesutf8Latin1Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionBytesutf8Latin1</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionByteslatin1RawDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionByteslatin1Raw</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionByteslatin1Utf8Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionByteslatin1Utf8</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionByteslatin1Latin1Definition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionByteslatin1Latin1</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="BytesScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "utf8", "channel": "internal://conversionBytesutf8"}, {"alias": "latin1", "channel": "internal://conversionByteslatin1"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "utf8Raw", "channel": "internal://conversionBytesutf8Raw"}, {"alias": "utf8Utf8", "channel": "internal://conversionBytesutf8Utf8"}, {"alias": "utf8Latin1", "channel": "internal://conversionBytesutf8Latin1"}, {"alias": "latin1Raw", "channel": "internal://conversionByteslatin1Raw"}, {"alias": "latin1Utf8", "channel": "internal://conversionByteslatin1Utf8"}, {"alias": "latin1Latin1", "channel": "internal://conversionByteslatin1Latin1"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>{ const c = inputs.utf8; outputs.utf8Raw.value = Array.prototype.map.call(c.rawBytes, function(b) { return ('0' + b.toString(16)).slice(-2); }).join(' '); }
+{ const c = inputs.utf8; outputs.utf8Utf8.value = c.fromUtf8(); }
+{ const c = inputs.utf8; outputs.utf8Latin1.value = c.fromLatin1(); }
+{ const c = inputs.latin1; outputs.latin1Raw.value = Array.prototype.map.call(c.rawBytes, function(b) { return ('0' + b.toString(16)).slice(-2); }).join(' '); }
+{ const c = inputs.latin1; outputs.latin1Utf8.value = c.fromUtf8(); }
+{ const c = inputs.latin1; outputs.latin1Latin1.value = c.fromLatin1(); }
+</string>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraywaveDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraywave</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>1;2;3</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+    <property name="nelm">
+     <number>3</number>
+    </property>
+    <property name="nord">
+     <number>3</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraymatrixDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraymatrix</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::Double</enum>
+    </property>
+    <property name="value">
+     <string>1;2;3;4</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+    <property name="nelm">
+     <number>4</number>
+    </property>
+    <property name="nord">
+     <number>4</number>
+    </property>
+    <property name="matrixRows">
+     <number>2</number>
+    </property>
+    <property name="matrixColumns">
+     <number>2</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraystringsDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraystrings</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>one;two</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+    <property name="nelm">
+     <number>2</number>
+    </property>
+    <property name="nord">
+     <number>2</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArrayswaveValueDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArrayswaveValue</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArrayswaveCheckDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArrayswaveCheck</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraysmatrixValueDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraysmatrixValue</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraysmatrixCheckDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraysmatrixCheck</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraysstringsValueDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraysstringsValue</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="conversionArraysstringsCheckDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>conversionArraysstringsCheck</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::String</enum>
+    </property>
+    <property name="value">
+     <string>Not run</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>6</number>
+    </property>
+   </widget>
+   <widget class="caScript" name="ArraysScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "wave", "channel": "internal://conversionArraywave"}, {"alias": "matrix", "channel": "internal://conversionArraymatrix"}, {"alias": "strings", "channel": "internal://conversionArraystrings"}]</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "waveValue", "channel": "internal://conversionArrayswaveValue"}, {"alias": "waveCheck", "channel": "internal://conversionArrayswaveCheck"}, {"alias": "matrixValue", "channel": "internal://conversionArraysmatrixValue"}, {"alias": "matrixCheck", "channel": "internal://conversionArraysmatrixCheck"}, {"alias": "stringsValue", "channel": "internal://conversionArraysstringsValue"}, {"alias": "stringsCheck", "channel": "internal://conversionArraysstringsCheck"}]</string>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::DataDriven</enum>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::Manual</enum>
+    </property>
+    <property name="script">
+     <string>outputs.waveValue.value = JSON.stringify(inputs.wave.value);
+let waveRejected = 0;
+for (const t of ['String','Short','Long','Char','Enum','Float','Double']) { try { inputs.wave.convert(EpicsType[t]); } catch (e) { ++waveRejected; } }
+outputs.waveCheck.value = waveRejected + '/7 rejected (expected 7/7)';
+outputs.matrixValue.value = JSON.stringify(inputs.matrix.value);
+let matrixRejected = 0;
+for (const t of ['String','Short','Long','Char','Enum','Float','Double']) { try { inputs.matrix.convert(EpicsType[t]); } catch (e) { ++matrixRejected; } }
+outputs.matrixCheck.value = matrixRejected + '/7 rejected (expected 7/7)';
+outputs.stringsValue.value = JSON.stringify(inputs.strings.value);
+let stringsRejected = 0;
+for (const t of ['String','Short','Long','Char','Enum','Float','Double']) { try { inputs.strings.convert(EpicsType[t]); } catch (e) { ++stringsRejected; } }
+outputs.stringsCheck.value = stringsRejected + '/7 rejected (expected 7/7)';
+</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>caLineEdit</extends>
+   <header>caTextEntry</header>
+  </customwidget>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>caLineEdit</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>genSoftPV</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections>
+  <connection>
+   <sender>StringRun</sender>
+   <signal>clicked()</signal>
+   <receiver>StringScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>ShortRun</sender>
+   <signal>clicked()</signal>
+   <receiver>ShortScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>LongRun</sender>
+   <signal>clicked()</signal>
+   <receiver>LongScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>CharRun</sender>
+   <signal>clicked()</signal>
+   <receiver>CharScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>EnumRun</sender>
+   <signal>clicked()</signal>
+   <receiver>EnumScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>FloatRun</sender>
+   <signal>clicked()</signal>
+   <receiver>FloatScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>DoubleRun</sender>
+   <signal>clicked()</signal>
+   <receiver>DoubleScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>BytesRun</sender>
+   <signal>clicked()</signal>
+   <receiver>BytesScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>ArraysRun</sender>
+   <signal>clicked()</signal>
+   <receiver>ArraysScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>

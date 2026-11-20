@@ -29,10 +29,133 @@
 #include <cainclude.h>
 #include <canumeric.h>
 #include <caspinbox.h>
+#include <cascript.h>
+#include <MessageWindow.h>
+#include <cawavetable.h>
 #include <gensoftpv.h>
+#include <QSignalSpy>
+#include <QJsonDocument>
+#include <QRegularExpression>
+#include <QMutexLocker>
 
 #include <cfloat>
 #include <climits>
+
+class WaveWriteProbe : public InternalPlugin
+{
+public:
+    knobData *source = Q_NULLPTR;
+    bool unlocked = true;
+    bool copied = true;
+    bool typed = true;
+    bool fallback = false;
+    int calls = 0;
+    QVector<double> values;
+
+    bool pvSetWave(knobData *, float *f, double *d, int16_t *s, int32_t *l,
+                   char *c, int count, char *, char *) override
+    {
+        record(f, d, s, l, c, count);
+        return !fallback;
+    }
+
+    int pvSetWave(char *, float *f, double *d, int16_t *s, int32_t *l,
+                  char *c, int count, char *, char *) override
+    {
+        record(f, d, s, l, c, count);
+        return 1;
+    }
+
+private:
+    void record(float *f, double *d, int16_t *s, int32_t *l, char *c, int count)
+    {
+        ++calls;
+        QMutex *mutex = static_cast<QMutex *>(source->mutex);
+        const bool acquired = mutex->tryLock();
+        unlocked = unlocked && acquired;
+        if(acquired) mutex->unlock();
+        typed = typed && (int(f != Q_NULLPTR) + int(d != Q_NULLPTR)
+                         + int(s != Q_NULLPTR) + int(l != Q_NULLPTR) + int(c != Q_NULLPTR) == 1);
+        values.clear();
+        for(int i = 0; i < count; ++i) {
+            switch(source->edata.fieldtype) {
+            case caDOUBLE: copied = copied && d != source->edata.dataB; values.append(d[i]); break;
+            case caFLOAT: copied = copied && f != source->edata.dataB; values.append(f[i]); break;
+            case caINT: copied = copied && s != source->edata.dataB; values.append(s[i]); break;
+            case caLONG: copied = copied && l != source->edata.dataB; values.append(l[i]); break;
+            case caCHAR: copied = copied && c != source->edata.dataB; values.append((unsigned char)c[i]); break;
+            }
+        }
+    }
+};
+
+void TestCaQtDM_Lib::waveformWriteReleasesDataMutex_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<int>("format");
+    QTest::addColumn<double>("expected");
+    QTest::addColumn<bool>("fallback");
+    QTest::newRow("double") << int(genSoftPV::Double) << "7.5" << int(caWaveTable::decimal) << 7.5 << false;
+    QTest::newRow("float") << int(genSoftPV::Float) << "7.5" << int(caWaveTable::decimal) << 7.5 << false;
+    QTest::newRow("short") << int(genSoftPV::Int) << "7" << int(caWaveTable::decimal) << 7.0 << false;
+    QTest::newRow("long") << int(genSoftPV::Long) << "7" << int(caWaveTable::decimal) << 7.0 << false;
+    QTest::newRow("char") << int(genSoftPV::Char) << "65" << int(caWaveTable::decimal) << 65.0 << false;
+    QTest::newRow("char-text") << int(genSoftPV::Char) << "A" << int(caWaveTable::string) << 65.0 << false;
+    QTest::newRow("legacy-fallback") << int(genSoftPV::Double) << "7.5" << int(caWaveTable::decimal) << 7.5 << true;
+}
+
+void TestCaQtDM_Lib::waveformWriteReleasesDataMutex()
+{
+    QFETCH(int, type);
+    QFETCH(QString, text);
+    QFETCH(int, format);
+    QFETCH(double, expected);
+    QFETCH(bool, fallback);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV *definition = new genSoftPV(m_parentAS);
+    definition->setVariable("waveWriteTest");
+    definition->setDataType(static_cast<genSoftPV::DataType>(type));
+    definition->setNelm(3);
+    definition->setValue("1;2;3");
+    m_caQtDM_Lib->HandleWidget(definition, "", true, true);
+    caWaveTable *table = new caWaveTable(m_parentAS);
+    table->setPV("internal://waveWriteTest");
+    m_caQtDM_Lib->HandleWidget(table, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    WaveWriteProbe probe;
+    probe.source = m_mutexKnobData->getMutexKnobDataPV(table, table->getPV());
+    QVERIFY(probe.source);
+    probe.fallback = fallback;
+    const QVariant originalInterface = table->property("Interface");
+    const QByteArray originalData(static_cast<const char *>(probe.source->edata.dataB), probe.source->edata.dataSize);
+    table->setProperty("Interface", QVariantList{QVariant::fromValue(static_cast<void *>(qobject_cast<ControlsInterface *>(&probe)))});
+    m_caQtDM_Lib->TreatRequestedWave(table->getPV(), text,
+                                  static_cast<caWaveTable::FormatType>(format), 1, table);
+    QCOMPARE(probe.calls, fallback ? 2 : 1);
+    QVERIFY2(probe.unlocked, "Plugin called while waveform data mutex is held");
+    QVERIFY2(probe.copied, "Plugin received the monitor buffer instead of a snapshot");
+    QVERIFY2(probe.typed, "Only the matching waveform pointer must be supplied");
+    QCOMPARE(probe.values, QVector<double>({1.0, expected, 3.0}));
+    QCOMPARE(QByteArray(static_cast<const char *>(probe.source->edata.dataB), probe.source->edata.dataSize), originalData);
+
+    // Exercise synchronous publication as well as the non-blocking lock probe.
+    table->setProperty("Interface", originalInterface);
+    if(type == genSoftPV::Char) return; // InternalPlugin::setWaveForPv has no char buffer support.
+    m_caQtDM_Lib->TreatRequestedWave(table->getPV(), text,
+                                  static_cast<caWaveTable::FormatType>(format), 1, table);
+    QVector<double> published;
+    for(int i = 0; i < 3; ++i) {
+        switch(probe.source->edata.fieldtype) {
+        case caDOUBLE: published.append(static_cast<double *>(probe.source->edata.dataB)[i]); break;
+        case caFLOAT: published.append(static_cast<float *>(probe.source->edata.dataB)[i]); break;
+        case caINT: published.append(static_cast<int16_t *>(probe.source->edata.dataB)[i]); break;
+        case caLONG: published.append(static_cast<int32_t *>(probe.source->edata.dataB)[i]); break;
+        }
+    }
+    QCOMPARE(published, QVector<double>({1.0, expected, 3.0}));
+}
 
 // registers a genSoftPV-defined internal channel and pumps one publish cycle
 static genSoftPV *registerInternalGenSoftPV(CaQtDM_Lib *lib, InternalPlugin *plugin, QWidget *host,
@@ -242,6 +365,852 @@ void TestCaQtDM_Lib::cleanup()
     delete m_internalPlugin;
     delete m_mutexKnobData;
     delete m_fakeFileOpenWindow;
+}
+
+void TestCaQtDM_Lib::scriptWritesExistingScalar_data()
+{
+    QTest::addColumn<int>("type");
+    QTest::addColumn<QString>("expression");
+    QTest::addColumn<QVariant>("expected");
+    QTest::addColumn<bool>("warning");
+    QTest::newRow("double") << int(genSoftPV::Double) << QStringLiteral("42.25") << QVariant(42.25) << false;
+    QTest::newRow("float") << int(genSoftPV::Float) << QStringLiteral("-3.75") << QVariant(-3.75) << false;
+    QTest::newRow("short-round-positive") << int(genSoftPV::Int) << QStringLiteral("3.5") << QVariant(4.0) << false;
+    QTest::newRow("short-round-negative") << int(genSoftPV::Int) << QStringLiteral("-3.5") << QVariant(-4.0) << false;
+    QTest::newRow("long-max") << int(genSoftPV::Long) << QStringLiteral("2147483647") << QVariant(2147483647.0) << false;
+    QTest::newRow("long-min") << int(genSoftPV::Long) << QStringLiteral("-2147483648") << QVariant(-2147483648.0) << false;
+    QTest::newRow("char") << int(genSoftPV::Char) << QStringLiteral("255") << QVariant(255.0) << false;
+    QTest::newRow("enum") << int(genSoftPV::Enum) << QStringLiteral("2") << QVariant(2.0) << false;
+    QTest::newRow("string") << int(genSoftPV::String) << QStringLiteral("'Grüezi'") << QVariant(QStringLiteral("Grüezi")) << false;
+    QTest::newRow("empty-string") << int(genSoftPV::String) << QStringLiteral("''") << QVariant(QString()) << false;
+    QTest::newRow("numeric-string") << int(genSoftPV::Double) << QStringLiteral("'42.25'") << QVariant(42.25) << false;
+    QTest::newRow("overflow") << int(genSoftPV::Long) << QStringLiteral("2147483648") << QVariant(0.0) << true;
+    QTest::newRow("char-negative") << int(genSoftPV::Char) << QStringLiteral("-1") << QVariant(0.0) << true;
+    QTest::newRow("enum-range") << int(genSoftPV::Enum) << QStringLiteral("3") << QVariant(0.0) << true;
+    QTest::newRow("float-overflow") << int(genSoftPV::Float) << QStringLiteral("1e100") << QVariant(0.0) << true;
+    QTest::newRow("nan") << int(genSoftPV::Double) << QStringLiteral("NaN") << QVariant(0.0) << true;
+    QTest::newRow("infinity") << int(genSoftPV::Double) << QStringLiteral("Infinity") << QVariant(0.0) << true;
+    QTest::newRow("object") << int(genSoftPV::Double) << QStringLiteral("({bad: 42})") << QVariant(0.0) << true;
+    QTest::newRow("unrepresentable-string") << int(genSoftPV::String) << QStringLiteral("'€'") << QVariant(QStringLiteral("0")) << true;
+}
+
+void TestCaQtDM_Lib::scriptWritesExistingScalar()
+{
+    QFETCH(int, type);
+    QFETCH(QString, expression);
+    QFETCH(QVariant, expected);
+    QFETCH(bool, warning);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptOutputTarget"));
+    source.setDataType(static_cast<genSoftPV::DataType>(type));
+    source.setEnumStrings({QStringLiteral("OFF"), QStringLiteral("ON"), QStringLiteral("FAULT")});
+    source.setValue(QStringLiteral("0"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    knobData *data = m_mutexKnobData->getMutexKnobDataPV(&source, QStringLiteral("scriptOutputTarget"));
+    QVERIFY(data);
+    QTRY_VERIFY(data->edata.connected);
+    const short originalType = data->edata.fieldtype;
+    const int nextIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+
+    caScript script(m_parentAS);
+    script.setOutputChannels({{QStringLiteral("internal://scriptOutputTarget"), QStringLiteral("result")}});
+    script.setScript(QStringLiteral("outputs.result.value = %1;").arg(expression));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    if (warning) QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*output .* ignored: .*"));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    if (warning) QVERIFY(script.getLastOutputText().isEmpty());
+    else QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptOutputTarget = ") + expected.toString());
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
+    QCOMPARE(data->edata.fieldtype, originalType);
+    if (type == genSoftPV::String) {
+        QMutexLocker lock(static_cast<QMutex *>(data->mutex));
+        QCOMPARE(QString::fromLatin1(static_cast<const char *>(data->edata.dataB)), expected.toString());
+    } else {
+        QCOMPARE(data->edata.rvalue, expected.toDouble());
+    }
+}
+
+void TestCaQtDM_Lib::scriptSkipsInvalidOutputs_data()
+{
+    QTest::addColumn<QString>("badChannel");
+    QTest::addColumn<bool>("duplicate");
+    QTest::addColumn<QString>("badValue");
+    QTest::newRow("missing") << QStringLiteral("internal://missing") << false << QStringLiteral("99");
+    QTest::newRow("external") << QStringLiteral("epics3://notAllowed") << false << QStringLiteral("99");
+    QTest::newRow("duplicate-val") << QStringLiteral("internal://duplicate") << true << QStringLiteral("99");
+    QTest::newRow("duplicate-same-value") << QStringLiteral("internal://duplicate") << true << QStringLiteral("100");
+    QTest::newRow("invalid-value") << QStringLiteral("internal://duplicate") << false << QStringLiteral("NaN");
+}
+
+void TestCaQtDM_Lib::scriptSkipsInvalidOutputs()
+{
+    QFETCH(QString, badChannel);
+    QFETCH(bool, duplicate);
+    QFETCH(QString, badValue);
+    genSoftPV *good = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                               QStringLiteral("scriptGoodOutput"), "", "");
+    genSoftPV *bad = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                              QStringLiteral("duplicate"), "", "");
+    const int nextIndex = m_mutexKnobData->GetMutexKnobDataIndex();
+    caScript script(m_parentAS);
+    QList<caScript::InputChannel> outputs = {
+        {QStringLiteral("internal://scriptGoodOutput"), QStringLiteral("good")},
+        {badChannel, QStringLiteral("bad")}
+    };
+    if (duplicate) outputs.append({badChannel + QStringLiteral(".VAL"), QStringLiteral("again")});
+    script.setOutputChannels(outputs);
+    script.setScript(QStringLiteral("outputs.good.value = 42; outputs.bad.value = %1;").arg(badValue)
+        + (duplicate ? QStringLiteral("outputs.again.value = 100;") : QString()));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*output .* ignored: .*"));
+    if (duplicate) QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*output .* ignored: .*"));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(good, QStringLiteral("scriptGoodOutput"))->edata.rvalue, 42.0);
+    QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(bad, QStringLiteral("duplicate"))->edata.rvalue, 0.0);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
+    QVERIFY(!m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("missing")));
+}
+
+void TestCaQtDM_Lib::scriptPublishesScaledInput_data()
+{
+    QTest::addColumn<bool>("useMonitor");
+    QTest::newRow("manual") << false;
+    QTest::newRow("selected-monitor") << true;
+}
+
+void TestCaQtDM_Lib::scriptPublishesScaledInput()
+{
+    QFETCH(bool, useMonitor);
+    genSoftPV *score = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                                QStringLiteral("scriptScore"), "", "");
+    genSoftPV *factor = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                                 QStringLiteral("scriptFactor"), "", "");
+    genSoftPV *result = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                                 QStringLiteral("scriptScaledScore"), "", "");
+    Q_UNUSED(score);
+    Q_UNUSED(factor);
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptScore"), QStringLiteral("score")},
+                             {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}});
+    script.setOutputChannels({{QStringLiteral("internal://scriptScaledScore"), QStringLiteral("result")}});
+    script.setScript(QStringLiteral("outputs.result.value = inputs.score.value * inputs.factor.value;"));
+    if (useMonitor) {
+        script.setExecutionMode(caScript::DataDriven);
+        script.setTriggerMode(caScript::SelectedInput);
+        script.setTriggerInput(QStringLiteral("factor"));
+    }
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    const auto run = [&](double input, double scale, double expected, int count) {
+        writeInternalField(m_internalPlugin, QStringLiteral("scriptScore"), QStringLiteral("VAL"), input);
+        writeInternalField(m_internalPlugin, QStringLiteral("scriptFactor"), QStringLiteral("VAL"), scale);
+        if (!useMonitor) script.executeScript();
+        QTRY_COMPARE(finished.count(), count);
+        QVERIFY(finished.last().first().toBool());
+        QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, expected);
+    };
+    run(200, 2, 400, 1);
+    run(300, 3, 900, 2);
+    run(400, 4, 1600, 3);
+    script.setScript(QStringLiteral("outputs.result.value = 123; throw new Error('Discard');"));
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 4);
+    QVERIFY(!finished.last().first().toBool());
+    QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(result, QStringLiteral("scriptScaledScore"))->edata.rvalue, 1600.0);
+    QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptScaledScore = 1600"));
+}
+
+void TestCaQtDM_Lib::scriptReceivesNumericWaveform_data()
+{
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("typeName");
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    for (const auto type : {genSoftPV::Double, genSoftPV::Float, genSoftPV::Int}) {
+        const QString name = type == genSoftPV::Double ? QStringLiteral("Double")
+            : type == genSoftPV::Float ? QStringLiteral("Float") : QStringLiteral("Short");
+        const QString values = type == genSoftPV::Int ? QStringLiteral("[-2,0,3]") : QStringLiteral("[-2,0,3.75]");
+        QTest::newRow(qPrintable(name + "-used-length")) << int(type) << name << 3 << values;
+        QTest::newRow(qPrintable(name + "-one-element")) << int(type) << name << 1 << QStringLiteral("[-2]");
+        QTest::newRow(qPrintable(name + "-empty")) << int(type) << name << 0 << QStringLiteral("[]");
+    }
+    QTest::newRow("Long-used-length") << int(genSoftPV::Long) << QStringLiteral("Long") << 3
+        << QStringLiteral("[-2147483648,0,2147483647]");
+    QTest::newRow("Long-one-element") << int(genSoftPV::Long) << QStringLiteral("Long") << 1
+        << QStringLiteral("[-2147483648]");
+    QTest::newRow("Long-empty") << int(genSoftPV::Long) << QStringLiteral("Long") << 0 << QStringLiteral("[]");
+}
+
+void TestCaQtDM_Lib::scriptReceivesNumericWaveform()
+{
+    QFETCH(int, sourceType);
+    QFETCH(QString, typeName);
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptFloatingPointWaveform"));
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(sourceType == genSoftPV::Long
+        ? QStringLiteral("-2147483648;0;2147483647;99;100") : sourceType == genSoftPV::Int
+        ? QStringLiteral("-2;0;3;99;100") : QStringLiteral("-2;0;3.75;99;100"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptFloatingPointWaveform"), QStringLiteral("samples")}});
+    script.setScript(QStringLiteral(
+        "const values = inputs.samples.value;\n"
+        "if (!Array.isArray(values)) throw new Error('Expected an array');\n"
+        "if (inputs.samples.fieldtype !== EpicsType.%2) throw new Error('Incorrect type');\n"
+        "if (JSON.stringify(values) !== JSON.stringify(%1)) throw new Error('Incorrect values or length');\n"
+        "if (values.length) values[0] = 999;").arg(expected, typeName));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptFloatingPointWaveform"));
+    QVERIFY(input);
+    QCOMPARE(input->edata.nelm, 5);
+    QCOMPARE(input->edata.valueCount, used);
+    QCOMPARE(input->edata.dimCount, 0);
+    const int elementSize = sourceType == genSoftPV::Double ? sizeof(double)
+        : sourceType == genSoftPV::Float ? sizeof(float)
+        : sourceType == genSoftPV::Int ? sizeof(int16_t) : sizeof(int32_t);
+    QByteArray originalBytes;
+    {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        if(used > 0) originalBytes = QByteArray(static_cast<const char *>(input->edata.dataB), used * elementSize);
+    }
+    QVariantList expectedBytes;
+    for(unsigned char byte : originalBytes) expectedBytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(expectedBytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.samples.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing waveform raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect waveform bytes or used length');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+    if(used > 0) {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), used * elementSize), originalBytes);
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesCharWaveform_data()
+{
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    QTest::addColumn<QString>("sourceValues");
+    QTest::addColumn<QByteArray>("expectedBytes");
+    QTest::newRow("used-length") << 3 << QStringLiteral("ABC")
+        << QStringLiteral("65;66;67;88;89") << QByteArray("ABC");
+    QTest::newRow("one-element") << 1 << QStringLiteral("A")
+        << QStringLiteral("65;66;67;88;89") << QByteArray("A");
+    QTest::newRow("empty") << 0 << QString()
+        << QStringLiteral("65;66;67;88;89") << QByteArray();
+    QTest::newRow("embedded-null-and-high-byte") << 3 << QStringLiteral("A")
+        << QStringLiteral("65;0;255;88;89") << QByteArray::fromHex("4100ff");
+}
+
+void TestCaQtDM_Lib::scriptReceivesCharWaveform()
+{
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    QFETCH(QString, sourceValues);
+    QFETCH(QByteArray, expectedBytes);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptCharWaveform"));
+    source.setDataType(genSoftPV::Char);
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(sourceValues);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptCharWaveform"), QStringLiteral("text")}});
+    script.setScript(QStringLiteral(
+        "if (typeof inputs.text.value !== 'string' || inputs.text.value !== '%1')\n"
+        "    throw new Error('Incorrect char waveform text or length');\n"
+        "if (inputs.text.fieldtype !== EpicsType.Char) throw new Error('Incorrect source type');\n"
+        "inputs.text.value = 'changed';").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    QVariantList bytes;
+    for(unsigned char byte : expectedBytes) bytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(bytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.text.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing char waveform raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect char waveform bytes or used length');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptCharWaveform"));
+    QVERIFY(input);
+    QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+    QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), used), expectedBytes);
+}
+
+void TestCaQtDM_Lib::scriptReceivesStringWaveform_data()
+{
+    QTest::addColumn<int>("used");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("used-length-with-empty-text-and-umlaut") << 3 << QStringLiteral("[\"A\",\"\",\"Gr\\uFFFDezi\"]");
+    QTest::newRow("one-element") << 1 << QStringLiteral("[\"A\"]");
+    QTest::newRow("empty") << 0 << QStringLiteral("[]");
+}
+
+void TestCaQtDM_Lib::scriptReceivesStringWaveform()
+{
+    QFETCH(int, used);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptStringWaveform"));
+    source.setDataType(genSoftPV::String);
+    source.setNelm(5);
+    source.setNord(used);
+    source.setValue(QStringLiteral("A;;Grüezi;unused;unused"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptStringWaveform"), QStringLiteral("texts")}});
+    script.setScript(QStringLiteral(
+        "if (!Array.isArray(inputs.texts.value) || JSON.stringify(inputs.texts.value) !== '%1')\n"
+        "    throw new Error('Incorrect string waveform values or length');\n"
+        "if (inputs.texts.fieldtype !== EpicsType.String) throw new Error('Incorrect source type');\n"
+        "inputs.texts.value[0] = 'changed';").arg(expected));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesMatrix_data()
+{
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("typeName");
+    QTest::addColumn<QString>("sourceValues");
+    QTest::addColumn<int>("rows");
+    QTest::addColumn<int>("columns");
+    QTest::addColumn<QString>("expected");
+    const auto addShapes = [](genSoftPV::DataType type, const QString &name,
+                              const QStringList &values, const QStringList &expected) {
+        QTest::newRow(qPrintable(name + "-two-by-three"))
+            << int(type) << name << values.join(';') << 2 << 3 << expected.at(0);
+        QTest::newRow(qPrintable(name + "-single-row"))
+            << int(type) << name << values.mid(0, 3).join(';') << 1 << 3 << expected.at(1);
+        QTest::newRow(qPrintable(name + "-single-column"))
+            << int(type) << name << values.mid(0, 3).join(';') << 3 << 1 << expected.at(2);
+        QTest::newRow(qPrintable(name + "-single-element"))
+            << int(type) << name << values.first() << 1 << 1 << expected.at(3);
+    };
+    addShapes(genSoftPV::Double, "Double", {"1", "2", "3", "4", "5", "6"},
+              {"[[1,2,3],[4,5,6]]", "[[1,2,3]]", "[[1],[2],[3]]", "[[1]]"});
+    addShapes(genSoftPV::Float, "Float", {"-3.75", "0", "2.5", "4", "5", "6"},
+              {"[[-3.75,0,2.5],[4,5,6]]", "[[-3.75,0,2.5]]", "[[-3.75],[0],[2.5]]", "[[-3.75]]"});
+    addShapes(genSoftPV::Int, "Short", {"-32768", "0", "32767", "4", "5", "6"},
+              {"[[-32768,0,32767],[4,5,6]]", "[[-32768,0,32767]]", "[[-32768],[0],[32767]]", "[[-32768]]"});
+    addShapes(genSoftPV::Long, "Long", {"-2147483648", "0", "2147483647", "4", "5", "6"},
+              {"[[-2147483648,0,2147483647],[4,5,6]]", "[[-2147483648,0,2147483647]]",
+               "[[-2147483648],[0],[2147483647]]", "[[-2147483648]]"});
+    addShapes(genSoftPV::Char, "Char", {"0", "65", "255", "4", "5", "6"},
+              {"[[0,65,255],[4,5,6]]", "[[0,65,255]]", "[[0],[65],[255]]", "[[0]]"});
+}
+
+void TestCaQtDM_Lib::scriptReceivesMatrix()
+{
+    QFETCH(int, sourceType);
+    QFETCH(QString, typeName);
+    QFETCH(QString, sourceValues);
+    QFETCH(int, rows);
+    QFETCH(int, columns);
+    QFETCH(QString, expected);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptMatrix"));
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
+    source.setMatrixRows(rows);
+    source.setMatrixColumns(columns);
+    source.setValue(sourceValues);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptMatrix"), QStringLiteral("matrix")}});
+    script.setScript(QStringLiteral(
+        "const values = inputs.matrix.value;\n"
+        "if (!Array.isArray(values) || !values.every(Array.isArray))\n"
+        "    throw new Error('Expected nested arrays');\n"
+        "if (JSON.stringify(values) !== '%1') throw new Error('Incorrect matrix shape or order');\n"
+        "if (inputs.matrix.fieldtype !== EpicsType.%2) throw new Error('Incorrect source type');\n"
+        "values[0][0] = 999;").arg(expected, typeName));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptMatrix"));
+    QVERIFY(input);
+    QCOMPARE(input->edata.dimCount, 2);
+    QCOMPARE(input->edata.dim[0], rows);
+    QCOMPARE(input->edata.dim[1], columns);
+    QCOMPARE(input->edata.valueCount, rows * columns);
+    const int elementSize = sourceType == genSoftPV::Double ? sizeof(double)
+        : sourceType == genSoftPV::Float ? sizeof(float)
+        : sourceType == genSoftPV::Int ? sizeof(int16_t)
+        : sourceType == genSoftPV::Long ? sizeof(int32_t) : sizeof(uint8_t);
+    QByteArray originalBytes;
+    {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        if(input->edata.dataB) {
+            originalBytes = QByteArray(static_cast<const char *>(input->edata.dataB), rows * columns * elementSize);
+        }
+    }
+    QVariantList expectedBytes;
+    for(unsigned char byte : originalBytes) expectedBytes.append(int(byte));
+    const QString expectedJson = QString::fromUtf8(QJsonDocument::fromVariant(expectedBytes).toJson(QJsonDocument::Compact));
+    script.setScript(script.getScript() + QStringLiteral(
+        "\nconst bytes = inputs.matrix.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing matrix raw bytes');\n"
+        "if (JSON.stringify(Array.from(bytes)) !== JSON.stringify(%1))\n"
+        "    throw new Error('Incorrect matrix bytes');\n"
+        "if (bytes.length) bytes[0] ^= 255;\n").arg(expectedJson));
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+    if(!originalBytes.isEmpty()) {
+        QMutexLocker lock(static_cast<QMutex *>(input->mutex));
+        QCOMPARE(QByteArray(static_cast<const char *>(input->edata.dataB), originalBytes.size()), originalBytes);
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesMetadata_data()
+{
+    QTest::addColumn<QString>("shape");
+    QTest::addColumn<double>("value");
+    QTest::addColumn<int>("status");
+    QTest::addColumn<int>("severity");
+    QTest::newRow("scalar-no-alarm") << QStringLiteral("scalar") << 0.0 << 0 << 0;
+    QTest::newRow("scalar-high") << QStringLiteral("scalar") << 8.0 << 4 << 1;
+    QTest::newRow("scalar-hihi") << QStringLiteral("scalar") << 10.0 << 3 << 2;
+    QTest::newRow("scalar-low") << QStringLiteral("scalar") << -8.0 << 6 << 1;
+    QTest::newRow("scalar-lolo") << QStringLiteral("scalar") << -10.0 << 5 << 2;
+    QTest::newRow("waveform") << QStringLiteral("waveform") << 0.0 << 0 << 0;
+    QTest::newRow("matrix") << QStringLiteral("matrix") << 0.0 << 0 << 0;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMetadata()
+{
+    QFETCH(QString, shape);
+    QFETCH(double, value);
+    QFETCH(int, status);
+    QFETCH(int, severity);
+    const bool waveform = shape == QStringLiteral("waveform");
+    const bool matrix = shape == QStringLiteral("matrix");
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptMetadata"));
+    source.setDataType(genSoftPV::Double);
+    source.setValue(matrix ? QStringLiteral("0;1;2;3;4;5") : waveform
+        ? QStringLiteral("0;1;2;99;100") : QString::number(value));
+    source.setUnits(QStringLiteral("V"));
+    source.setPrecision(2);
+    source.setDrvl(QStringLiteral("-12"));
+    source.setDrvh(QStringLiteral("12"));
+    source.setLopr(QStringLiteral("-10"));
+    source.setHopr(QStringLiteral("10"));
+    source.setLolo(QStringLiteral("-9"));
+    source.setLow(QStringLiteral("-7"));
+    source.setHigh(QStringLiteral("7"));
+    source.setHihi(QStringLiteral("9"));
+    if (waveform) { source.setNelm(5); source.setNord(3); }
+    if (matrix) { source.setMatrixRows(2); source.setMatrixColumns(3); }
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    QVariantMap expected = {
+        {"connected", true}, {"fieldtype", int(caScript::Double)},
+        {"units", "V"}, {"precision", 2}, {"status", status}, {"severity", severity},
+        {"lower_disp_limit", -10}, {"upper_disp_limit", 10},
+        {"lower_ctrl_limit", -12}, {"upper_ctrl_limit", 12},
+        {"lower_alarm_limit", -9}, {"lower_warning_limit", -7},
+        {"upper_warning_limit", 7}, {"upper_alarm_limit", 9},
+        {"nelm", matrix ? 6 : waveform ? 5 : 1},
+        {"valueCount", matrix ? 6 : waveform ? 3 : 1}, {"enumCount", 0},
+        {"dimCount", matrix ? 2 : 0}, {"ntType", matrix ? int(NT_MATRIX) : int(NT_NONE)},
+        {"dim", matrix ? QVariantList{2, 3} : QVariantList{0, 0}},
+        {"accessR", true}, {"accessW", true}
+    };
+    const QString json = QString::fromUtf8(QJsonDocument::fromVariant(expected).toJson(QJsonDocument::Compact));
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptMetadata"), QStringLiteral("pv")}});
+    script.setScript(QStringLiteral(
+        "const expected = %1;\n"
+        "for (const key of Object.keys(expected)) {\n"
+        "    if (JSON.stringify(inputs.pv[key]) !== JSON.stringify(expected[key]))\n"
+        "        throw new Error('Incorrect metadata: ' + key);\n"
+        "}\n"
+        "if (!Array.isArray(inputs.pv.dim)) throw new Error('Expected dimension array');\n"
+        "inputs.pv.units = 'changed'; inputs.pv.dim[0] = 999;").arg(json));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptMetadata"));
+    QVERIFY(input);
+    QCOMPARE(input->edata.status, short(status));
+    QCOMPARE(input->edata.severity, short(severity));
+    QCOMPARE(input->edata.upper_ctrl_limit, 12.0);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int run = 1; run <= 2; ++run) {
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+    }
+    QCOMPARE(QString::fromLatin1(input->edata.units), QStringLiteral("V"));
+    QCOMPARE(input->edata.dim[0], matrix ? 2 : 0);
+}
+
+void TestCaQtDM_Lib::scriptReceivesConnectionAndAccessChanges()
+{
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptAccessMetadata"));
+    source.setDataType(genSoftPV::Double);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptAccessMetadata"), QStringLiteral("pv")}});
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    const knobData *input = m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("scriptAccessMetadata"));
+    QVERIFY(input);
+    QTRY_VERIFY(input->edata.connected);
+    knobData snapshot = *input;
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    for (int step = 0; step < 3; ++step) {
+        snapshot.edata.connected = step != 1;
+        snapshot.edata.accessR = step != 1;
+        snapshot.edata.accessW = step == 2;
+        m_caQtDM_Lib->Callback_UpdateWidget(snapshot.index, &script, "", "", "", snapshot);
+        script.setScript(QStringLiteral(
+            "if (inputs.pv.connected !== %1 || inputs.pv.accessR !== %1 || inputs.pv.accessW !== %2)\n"
+            "    throw new Error('Incorrect connection or access state');")
+            .arg(step != 1 ? "true" : "false", step == 2 ? "true" : "false"));
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), step + 1);
+        QVERIFY(finished.last().first().toBool());
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesTypedScalar_data()
+{
+    QTest::addColumn<int>("sourceType");
+    QTest::addColumn<QString>("value");
+    QTest::addColumn<QString>("expectedType");
+    QTest::addColumn<QString>("expectedValue");
+    QTest::newRow("string") << int(genSoftPV::String) << QStringLiteral("ABC")
+                            << QStringLiteral("String") << QStringLiteral("'ABC'");
+    QTest::newRow("short-min") << int(genSoftPV::Int) << QStringLiteral("-32768")
+                               << QStringLiteral("Short") << QStringLiteral("-32768");
+    QTest::newRow("short-max") << int(genSoftPV::Int) << QStringLiteral("32767")
+                               << QStringLiteral("Short") << QStringLiteral("32767");
+    QTest::newRow("float") << int(genSoftPV::Float) << QStringLiteral("-3.75")
+                           << QStringLiteral("Float") << QStringLiteral("-3.75");
+    QTest::newRow("double") << int(genSoftPV::Double) << QStringLiteral("3.75")
+                            << QStringLiteral("Double") << QStringLiteral("3.75");
+    QTest::newRow("long") << int(genSoftPV::Long) << QStringLiteral("2147483647")
+                          << QStringLiteral("Long") << QStringLiteral("2147483647");
+    for (int value : {0, 1, 2}) {
+        QTest::newRow(qPrintable(QStringLiteral("enum-%1").arg(value)))
+            << int(genSoftPV::Enum) << QString::number(value)
+            << QStringLiteral("Enum") << QString::number(value);
+    }
+    for (int value : {0, 65, 255}) {
+        QTest::newRow(qPrintable(QStringLiteral("char-%1").arg(value)))
+            << int(genSoftPV::Char) << QString::number(value)
+            << QStringLiteral("Char") << QString::number(value);
+    }
+}
+
+void TestCaQtDM_Lib::scriptReceivesTypedScalar()
+{
+    QFETCH(int, sourceType);
+    QFETCH(QString, value);
+    QFETCH(QString, expectedType);
+    QFETCH(QString, expectedValue);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptTypedInput"));
+    source.setDataType(static_cast<genSoftPV::DataType>(sourceType));
+    source.setValue(value);
+    source.setEnumStrings({QStringLiteral("OFF"), QStringLiteral("ON"), QStringLiteral("FAULT")});
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({{QStringLiteral("internal://scriptTypedInput"), QStringLiteral("sample")}});
+    script.setScript(QStringLiteral(
+        "const channel = inputs.sample;\n"
+        "if (channel.fieldtype !== EpicsType.%1) throw new Error('Incorrect source type');\n"
+        "if (channel.value !== %2) throw new Error('Incorrect scalar value');\n"
+        "if (channel.fieldtype === EpicsType.Enum) {\n"
+        "    const labels = ['OFF', 'ON', 'FAULT'];\n"
+        "    if (channel.label !== labels[channel.value]) throw new Error('Incorrect enum label');\n"
+        "    if (JSON.stringify(channel.enumStrings) !== JSON.stringify(labels))\n"
+        "        throw new Error('Incorrect enum strings');\n"
+        "}").arg(expectedType, expectedValue));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredScalarThroughAlias()
+{
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptScalarInput"));
+    source.setDataType(genSoftPV::Double);
+    source.setValue(QStringLiteral("2.5"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptScalarInput"), QStringLiteral("factor")}
+    });
+    script.setScript(QStringLiteral(
+        "if (inputs.factor.value !== 2.5) throw new Error('Incorrect input value');"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredShortThroughAlias_data()
+{
+    QTest::addColumn<int>("value");
+    QTest::newRow("zero") << 0;
+    QTest::newRow("positive") << 42;
+    QTest::newRow("negative") << -42;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredShortThroughAlias()
+{
+    QFETCH(int, value);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptShortInput"));
+    source.setDataType(genSoftPV::Int);
+    source.setValue(QString::number(value));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptShortInput"), QStringLiteral("number")}
+    });
+    script.setScript(QStringLiteral(
+        "if (inputs.number.value !== %1) throw new Error('Incorrect short input value');")
+        .arg(value));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredLongThroughAlias_data()
+{
+    QTest::addColumn<int>("value");
+    QTest::newRow("zero") << 0;
+    QTest::newRow("positive") << 42;
+    QTest::newRow("negative") << -42;
+    QTest::newRow("minimum") << (-2147483647 - 1);
+    QTest::newRow("maximum") << 2147483647;
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredLongThroughAlias()
+{
+    QFETCH(int, value);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptLongInput"));
+    source.setDataType(genSoftPV::Long);
+    source.setValue(QString::number(value));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptLongInput"), QStringLiteral("number")}
+    });
+    script.setScript(QStringLiteral(
+        "if (inputs.number.value !== %1) throw new Error('Incorrect long input value');")
+        .arg(value));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias_data()
+{
+    QTest::addColumn<QString>("value");
+    QTest::newRow("umlaut") << QStringLiteral("Grüezi");
+    QTest::newRow("empty") << QString();
+}
+
+void TestCaQtDM_Lib::scriptReceivesMonitoredStringThroughAlias()
+{
+    QFETCH(QString, value);
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptStringInput"));
+    source.setDataType(genSoftPV::String);
+    source.setValue(value);
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptStringInput"), QStringLiteral("text")}
+    });
+    script.setScript(value.isEmpty()
+        ? QStringLiteral("if (inputs.text.value !== '') throw new Error('Missing empty string');")
+        : QStringLiteral("if (inputs.text.value !== 'Gr\\uFFFDezi') throw new Error('Incorrect string');"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaQtDM_Lib::scriptReceivesOriginalStringBytes()
+{
+    m_mutexKnobData->UpdateMechanism(MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable(QStringLiteral("scriptRawStringInput"));
+    source.setDataType(genSoftPV::String);
+    source.setValue(QStringLiteral("Grüezi"));
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setInputChannels({
+        {QStringLiteral("internal://scriptRawStringInput"), QStringLiteral("text")}
+    });
+    script.setScript(QStringLiteral(
+        "const bytes = inputs.text.rawBytes;\n"
+        "if (!(bytes instanceof Uint8Array)) throw new Error('Missing raw bytes');\n"
+        "const expected = [0x47, 0x72, 0xfc, 0x65, 0x7a, 0x69];\n"
+        "if (bytes.length !== expected.length) throw new Error('Incorrect byte count');\n"
+        "for (let i = 0; i < expected.length; ++i) {\n"
+        "    if (bytes[i] !== expected[i]) throw new Error('Changed original byte');\n"
+        "}"));
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    bool updated = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &script,
+            [&script, &updated](int, QWidget *widget, const QString &, const QString &,
+                               const QString &, const knobData &) {
+        if (widget == &script) updated = true;
+    });
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updated);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    script.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
 }
 
 void TestCaQtDM_Lib::checkJsonStringWorks()
@@ -713,4 +1682,35 @@ void TestCaQtDM_Lib::computeNumericMaxMinPrecUpdatesWhenChannelChanges()
                                              "T_Numeric_Live");
     checkWidgetPicksUpFieldWrite<caSpinbox>(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                              "T_Spinbox_Live");
+}
+
+void TestCaQtDM_Lib::scriptMessagesReachLogAndMessageWindow()
+{
+    MessageWindow *window = new MessageWindow(m_fakeFileOpenWindow);
+    m_caQtDM_Lib->messageWindowP = window;
+    caScript script(m_parentAS);
+    script.setObjectName(QStringLiteral("loggingTest"));
+    script.setScript("console.log('info-marker'); console.warn('warning-marker'); console.error('error-marker'); throw new Error('exception-marker');");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    QTest::ignoreMessage(QtInfoMsg, QRegularExpression("caScript loggingTest: info-marker"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript loggingTest: warning-marker"));
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript loggingTest: error-marker"));
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript loggingTest: .*exception-marker"));
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QTRY_VERIFY(window->getMessageBoxContents().contains("exception-marker"));
+    const QString text = window->getMessageBoxContents();
+    QVERIFY(text.contains("info-marker"));
+    QVERIFY(text.contains("warning-marker"));
+    QVERIFY(text.contains("error-marker"));
+
+    window->clearText();
+    caScript invalid(m_parentAS);
+    invalid.setObjectName(QStringLiteral("invalidConfiguration"));
+    invalid.setInputChannels({{"first", "duplicate"}, {"second", "duplicate"}});
+    QTest::ignoreMessage(QtCriticalMsg, QRegularExpression("caScript invalidConfiguration: Duplicate input key"));
+    m_caQtDM_Lib->HandleWidget(&invalid, "", false, false);
+    QTRY_VERIFY(window->getMessageBoxContents().contains("Duplicate input key"));
 }

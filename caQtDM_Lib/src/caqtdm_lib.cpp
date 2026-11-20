@@ -29,6 +29,8 @@
 
 #include "caQtDM_Lib_global.h"
 #include <stdint.h>
+#include <limits>
+#include <mutex>
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
@@ -48,6 +50,8 @@
 #endif
 
 #include <QObject>
+#include <QMutexLocker>
+#include <QPointer>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -82,6 +86,7 @@
 
 #include "caqtdm_lib.h"
 #include "caalarmtree.h"      // not part of the QtControls umbrella header
+#include "cascript.h"
 #include "uiconverter.h"
 #include "fileFunctions.h"
 
@@ -3579,8 +3584,54 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
 
         connect(tableWidget, SIGNAL(TableDoubleClickedSignal(QString)), this, SLOT(Callback_TableDoubleClicked(QString)));
 
-        // alarm handler tree: the widget parses its alh configuration and lists the pvs, the lib subscribes and writes
+        // caScript inputs are subscribed by the lib, independently of the data plugin
         //==================================================================================================================
+    } else if(caScript* scriptWidget = qobject_cast<caScript *>(w1)) {
+        scriptWidget->setProperty("ObjectType", caScript_Widget);
+        scriptWidget->setProperty("Taken", true);
+        const QStringList errors = scriptWidget->inputConfigurationErrors()
+                                   + scriptWidget->outputConfigurationErrors()
+                                   + scriptWidget->triggerConfigurationErrors();
+        if (!errors.isEmpty()) {
+            integerList.append(0);
+            scriptWidget->setProperty("MonitorList", integerList);
+            for (const QString &error : errors) {
+                const QString message = tr("caScript %1: %2").arg(w1->objectName(), error);
+                QByteArray text = message.toLocal8Bit();
+                postMessageAndLog(QtCriticalMsg, text.data(), caQtDMLibLog);
+            }
+            return;
+        }
+
+        const QList<caScript::InputChannel> inputs = scriptWidget->getInputChannels();
+        for (int i = 0; i < inputs.size(); ++i) {
+            specData[0] = i;
+            w1->setToolTip(QString());
+            const int num = addMonitor(myWidget, &kData, inputs.at(i).channel, w1, specData, map, &pv);
+            integerList.append(num);
+            ++nbMonitors;
+        }
+        integerList.insert(0, nbMonitors);
+        scriptWidget->setProperty("MonitorList", integerList);
+
+        QList<caScript::InputChannel> outputs = scriptWidget->getOutputChannels();
+        for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
+        scriptWidget->setOutputChannels(outputs);
+        connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
+        connect(scriptWidget, &caScript::scriptInfo, this, [this, scriptWidget](const QString &info) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), info).toLocal8Bit();
+            postMessageAndLog(QtInfoMsg, message.data(), caQtDMLibLog);
+        });
+        connect(scriptWidget, &caScript::scriptWarning, this, [this, scriptWidget](const QString &warning) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
+            postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+        });
+        connect(scriptWidget, &caScript::scriptError, this, [this, scriptWidget](const QString &error) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), error).toLocal8Bit();
+            postMessageAndLog(QtCriticalMsg, message.data(), caQtDMLibLog);
+        });
+        scriptWidget->startTriggers();
+
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
 
         w1->setProperty("ObjectType", caAlarmTree_Widget);
@@ -5444,9 +5495,6 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                                        const QString& String,
                                        const knobData& data)
 {
-    Q_UNUSED(indx);
-    Q_UNUSED(fec);
-
     if(!AllowsUpdate) return;
 
     // thread mutexknobdata emits to all instances of this class, later we will have to filter on the emit side to enhance performance
@@ -6630,6 +6678,212 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
         }
 
         // alarm handler tree: routed by specData[0] inside the widget=========================================
+    } else if(caScript *scriptWidget = qobject_cast<caScript *>(w)) {
+        const bool readsBuffer = data.edata.connected
+            && (data.edata.fieldtype == caSTRING || data.edata.nelm > 1 || data.edata.dimCount == 2);
+        std::unique_lock<QMutex> bufferLock;
+        if (readsBuffer) {
+            auto *channelMutex = static_cast<QMutex *>(data.mutex);
+            if (!channelMutex || indx < 0 || indx >= mutexKnobDataP->GetMutexKnobDataSize()) return;
+            bufferLock = std::unique_lock<QMutex>(*channelMutex, std::try_to_lock);
+            if (!bufferLock.owns_lock()) {
+                // A synchronous publisher can still hold the mutex on this thread.
+                const QPointer<caScript> target(scriptWidget);
+                const int monitorCount = data.edata.monitorCount;
+                QTimer::singleShot(1, this, [this, target, indx, monitorCount, units, fec, String] {
+                    if (!target || !AllowsUpdate) return;
+                    const knobData current = mutexKnobDataP->GetMutexKnobData(indx);
+                    if (current.index == indx && current.dispW == target.data()
+                        && current.edata.monitorCount == monitorCount) {
+                        Callback_UpdateWidget(indx, target.data(), units, fec, String, current);
+                    }
+                });
+                return;
+            }
+            const knobData current = mutexKnobDataP->GetMutexKnobData(indx);
+            if (current.index != indx || current.dispW != scriptWidget || current.mutex != data.mutex
+                || current.edata.monitorCount != data.edata.monitorCount || current.edata.dataB != data.edata.dataB) return;
+        }
+
+        QVariantMap metadata = {
+            {QStringLiteral("connected"), bool(data.edata.connected)},
+            {QStringLiteral("status"), int(data.edata.status)},
+            {QStringLiteral("severity"), int(data.edata.severity)},
+            {QStringLiteral("units"), QString::fromLatin1(data.edata.units)},
+            {QStringLiteral("precision"), int(data.edata.precision)},
+            {QStringLiteral("lower_disp_limit"), data.edata.lower_disp_limit},
+            {QStringLiteral("upper_disp_limit"), data.edata.upper_disp_limit},
+            {QStringLiteral("lower_alarm_limit"), data.edata.lower_alarm_limit},
+            {QStringLiteral("lower_warning_limit"), data.edata.lower_warning_limit},
+            {QStringLiteral("upper_warning_limit"), data.edata.upper_warning_limit},
+            {QStringLiteral("upper_alarm_limit"), data.edata.upper_alarm_limit},
+            {QStringLiteral("lower_ctrl_limit"), data.edata.lower_ctrl_limit},
+            {QStringLiteral("upper_ctrl_limit"), data.edata.upper_ctrl_limit},
+            {QStringLiteral("nelm"), data.edata.nelm},
+            {QStringLiteral("valueCount"), data.edata.valueCount},
+            {QStringLiteral("enumCount"), data.edata.enumCount},
+            {QStringLiteral("dimCount"), data.edata.dimCount},
+            {QStringLiteral("dim"), QVariantList{data.edata.dim[0], data.edata.dim[1]}},
+            {QStringLiteral("ntType"), data.edata.ntType},
+            {QStringLiteral("accessR"), bool(data.edata.accessR)},
+            {QStringLiteral("accessW"), bool(data.edata.accessW)}
+        };
+        switch (data.edata.fieldtype) {
+        case caSTRING: metadata.insert(QStringLiteral("fieldtype"), int(caScript::String)); break;
+        case caINT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Short)); break;
+        case caFLOAT: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Float)); break;
+        case caENUM: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Enum)); break;
+        case caCHAR: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Char)); break;
+        case caLONG: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Long)); break;
+        case caDOUBLE: metadata.insert(QStringLiteral("fieldtype"), int(caScript::Double)); break;
+        default: break;
+        }
+        if (data.edata.connected && data.edata.fieldtype == caENUM) {
+            const QStringList labels = data.edata.enumCount > 0
+                ? String.split(QChar(27)).mid(0, data.edata.enumCount) : QStringList();
+            metadata.insert(QStringLiteral("enumStrings"), labels);
+            if (data.edata.ivalue >= 0 && data.edata.ivalue < labels.size()) {
+                metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
+            }
+        }
+        scriptWidget->updateInputMetadata(data.specData[0], metadata);
+        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                                    || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG
+                                    || (data.edata.fieldtype == caCHAR && data.edata.dimCount == 2))
+            && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
+                || data.edata.dimCount == 2)) {
+            int elementSize;
+            switch (data.edata.fieldtype) {
+            case caDOUBLE: elementSize = sizeof(double); break;
+            case caFLOAT: elementSize = sizeof(float); break;
+            case caINT: elementSize = sizeof(int16_t); break;
+            case caLONG: elementSize = sizeof(int32_t); break;
+            case caCHAR: elementSize = sizeof(uint8_t); break;
+            default: return;
+            }
+            QVariantList values;
+            QByteArray bytes;
+            bool valid = false;
+            {
+                const int count = data.edata.valueCount;
+                const bool singleWaveformValue = data.edata.dimCount == 0 && count == 1;
+                const bool epics3SingleValue = singleWaveformValue && qstrcmp(data.pluginName, "epics3") == 0;
+                if (data.edata.dimCount == 2 && data.edata.dim[0] == 1
+                    && data.edata.dim[1] == 1 && count == 1 && !data.edata.dataB) {
+                    values.append(data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+                        ? data.edata.rvalue : double(data.edata.ivalue));
+                    valid = true;
+                } else if (singleWaveformValue && (!data.edata.dataB
+                           || (epics3SingleValue && data.edata.dataSize > elementSize))) {
+                    // The current EPICS3 plugin leaves the waveform buffer untouched for single-element updates.
+                    values.append(data.edata.rvalue);
+                    if (epics3SingleValue) {
+                        switch (data.edata.fieldtype) {
+                        case caDOUBLE:
+                            bytes = QByteArray(reinterpret_cast<const char *>(&data.edata.rvalue), sizeof(double));
+                            break;
+                        case caFLOAT: {
+                            // Widening to double may have changed the original NaN payload.
+                            if (qIsNaN(data.edata.rvalue)) break;
+                            const float value = static_cast<float>(data.edata.rvalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        case caINT: {
+                            const int16_t value = static_cast<int16_t>(data.edata.ivalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        case caLONG: {
+                            const int32_t value = static_cast<int32_t>(data.edata.ivalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        }
+                    }
+                    valid = true;
+                } else if (count >= 0 && (count == 0 || (data.edata.dataB
+                    && count <= data.edata.dataSize / elementSize))) {
+                    values.reserve(count);
+                    if (count > 0) {
+                        bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count * elementSize);
+                    }
+                    for (int i = 0; i < count; ++i) {
+                        double value;
+                        switch (data.edata.fieldtype) {
+                        case caDOUBLE: value = static_cast<const double *>(data.edata.dataB)[i]; break;
+                        case caFLOAT: value = static_cast<const float *>(data.edata.dataB)[i]; break;
+                        case caINT: value = static_cast<const int16_t *>(data.edata.dataB)[i]; break;
+                        case caLONG: value = static_cast<const int32_t *>(data.edata.dataB)[i]; break;
+                        case caCHAR: value = static_cast<const uint8_t *>(data.edata.dataB)[i]; break;
+                        default: return;
+                        }
+                        values.append(value);
+                    }
+                    valid = true;
+                }
+            }
+            bufferLock.unlock();
+            if (valid) {
+                if (data.edata.dimCount == 2) {
+                    const int rows = data.edata.dim[0];
+                    const int columns = data.edata.dim[1];
+                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) return;
+                    QVariantList matrix;
+                    matrix.reserve(rows);
+                    for (int row = 0; row < rows; ++row) {
+                        matrix.append(QVariant(values.mid(row * columns, columns)));
+                    }
+                    values = matrix;
+                }
+                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
+                scriptWidget->updateInputValue(data.specData[0], values);
+            }
+        } else if (data.edata.connected && data.edata.fieldtype == caSTRING
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0
+                   && data.edata.valueCount >= 0) {
+            bufferLock.unlock();
+            const QStringList texts = String.split(QChar(27));
+            QVariantList values;
+            for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
+                values.append(texts.at(i));
+            }
+            scriptWidget->updateInputValue(data.specData[0], values);
+        } else if (data.edata.connected && data.edata.fieldtype == caCHAR
+                   && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            QByteArray bytes;
+            {
+                const int count = data.edata.valueCount;
+                if (count < 0 || (count > 0 && (!data.edata.dataB || count > data.edata.dataSize))) return;
+                if (count > 0) {
+                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count);
+                }
+            }
+            bufferLock.unlock();
+            scriptWidget->updateInputRawBytes(data.specData[0], bytes);
+            scriptWidget->updateInputValue(data.specData[0], String);
+        } else if (data.edata.connected && data.edata.valueCount <= 1
+                   && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
+            if (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT) {
+                scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
+            } else if (data.edata.fieldtype == caINT || data.edata.fieldtype == caCHAR
+                       || data.edata.fieldtype == caENUM) {
+                scriptWidget->updateInputValue(data.specData[0], static_cast<int>(data.edata.ivalue));
+            } else if (data.edata.fieldtype == caLONG) {
+                scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));
+            } else if (data.edata.fieldtype == caSTRING) {
+                QByteArray bytes;
+                if (data.edata.dataB && data.edata.dataSize > 0) {
+                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), data.edata.dataSize);
+                    const int terminator = bytes.indexOf('\0');
+                    if (terminator >= 0) bytes.truncate(terminator);
+                }
+                bufferLock.unlock();
+                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
+                scriptWidget->updateInputValue(data.specData[0], String);
+            }
+        }
+
     } else if(caAlarmTree *alarmTree = qobject_cast<caAlarmTree *>(w)) {
         alarmTree->dataUpdate(String, data);
 
@@ -7296,6 +7550,116 @@ void CaQtDM_Lib::Callback_TextEntryChanged(const QString& text)
 /**
  * caAlarmTree asks for a write ($SEVRPV, $ACKPV, $HEARTBEATPV, $FORCEPV, config pv); all of them are monitored by the tree
  */
+void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
+{
+    caScript *widget = qobject_cast<caScript *>(sender());
+    if (!widget) return;
+    const auto warn = [this, widget](const QString &channel, const QString &reason) {
+        QByteArray message = tr("caScript %1: output %2 ignored: %3")
+            .arg(widget->objectName(), channel, reason).toLocal8Bit();
+        postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+    };
+    const auto targetName = [](QString channel) {
+        channel = channel.trimmed();
+        if (channel.endsWith(QStringLiteral(".VAL"))) channel.chop(4);
+        return channel;
+    };
+    QMap<QString, int> counts;
+    const auto outputs = widget->getOutputChannels();
+    for (const auto &output : outputs) ++counts[targetName(output.channel)];
+    for (const auto &output : outputs) {
+        const QString key = output.alias.isEmpty() ? output.channel : output.alias;
+        if (!values.contains(key)) continue;
+        const QString channel = targetName(output.channel);
+        if (counts.value(channel) > 1) {
+            warn(channel, tr("duplicate output target"));
+            continue;
+        }
+        if (!channel.startsWith(QStringLiteral("internal://"))) {
+            warn(channel, tr("only existing internal channels are supported"));
+            continue;
+        }
+        const QString pv = channel.mid(11);
+        knobData *existing = mutexKnobDataP->getMutexKnobDataPV(widget, pv);
+        if (!existing || QString::fromLatin1(existing->pluginName) != QStringLiteral("internal")) {
+            warn(channel, tr("target is not defined"));
+            continue;
+        }
+        knobData target = mutexKnobDataP->GetMutexKnobData(existing->index);
+        if (!target.edata.connected || !target.edata.accessW || target.edata.nelm != 1
+            || target.edata.dimCount != 0) {
+            warn(channel, tr("target must be a connected writable scalar"));
+            continue;
+        }
+        const QVariant value = values.value(key);
+        QByteArray text;
+        double realValue = 0.0;
+        int32_t integerValue = 0;
+        if (target.edata.fieldtype == caSTRING) {
+            if (!value.canConvert<QString>()) {
+                warn(channel, tr("value cannot be converted to a string"));
+                continue;
+            }
+            const QString string = value.toString();
+            text = string.toLatin1();
+            if (string.contains(QChar(0)) || QString::fromLatin1(text) != string) {
+                warn(channel, tr("value cannot be represented by the internal Latin-1 string channel"));
+                continue;
+            }
+        } else {
+            bool ok = false;
+            realValue = value.toDouble(&ok);
+            if (!ok || !qIsFinite(realValue)) {
+                warn(channel, tr("value must be a finite number"));
+                continue;
+            }
+            if (target.edata.fieldtype == caFLOAT) {
+                if (qAbs(realValue) > std::numeric_limits<float>::max()) {
+                    warn(channel, tr("value exceeds the float range"));
+                    continue;
+                }
+            } else if (target.edata.fieldtype != caDOUBLE) {
+                double minimum;
+                double maximum;
+                switch (target.edata.fieldtype) {
+                case caINT: minimum = -32768; maximum = 32767; break;
+                case caLONG: minimum = -2147483648.0; maximum = 2147483647; break;
+                case caCHAR: minimum = 0; maximum = 255; break;
+                case caENUM:
+                    minimum = 0;
+                    maximum = target.edata.enumCount > 0 ? target.edata.enumCount - 1 : 65535;
+                    break;
+                default:
+                    warn(channel, tr("unsupported target type"));
+                    continue;
+                }
+                const double rounded = round(realValue);
+                if (rounded < minimum || rounded > maximum) {
+                    warn(channel, tr("value exceeds the target range"));
+                    continue;
+                }
+                integerValue = static_cast<int32_t>(llround(realValue));
+                realValue = integerValue;
+            }
+        }
+        ControlsInterface *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+        if (!plugin) {
+            warn(channel, tr("internal plugin is unavailable"));
+            continue;
+        }
+        QByteArray object = widget->objectName().toLatin1();
+        char error[SMALL_STRING_LENGTH] = {};
+        if (!plugin->pvSetValue(&target, realValue, integerValue, text.data(), object.data(), error, 0)) {
+            warn(channel, tr("internal plugin rejected the write"));
+        } else {
+            const QVariant writtenValue = target.edata.fieldtype == caSTRING
+                ? QVariant(QString::fromLatin1(text))
+                : QVariant(target.edata.fieldtype == caFLOAT ? double(float(realValue)) : realValue);
+            widget->updateLastOutput(channel, writtenValue);
+        }
+    }
+}
+
 void CaQtDM_Lib::Callback_AlarmTreeWrite(const QString &pv, const QString &text, bool asString)
 {
     QWidget *w = qobject_cast<QWidget *>(sender());
@@ -10070,137 +10434,103 @@ void CaQtDM_Lib::TreatRequestedValue(QString pvo, QString text, FormatType fType
   */
 void CaQtDM_Lib::TreatRequestedWave(QString pvo, QString text, caWaveTable::FormatType fType, int index, QWidget *w)
 {
-    char    errmess[SMALL_STRING_LENGTH], sdata[40], asc[MAX_STRING_LENGTH];
-    int32_t data32[1];
-    int16_t data16[1];
-    float   fdata[1];
-    double  value, ddata[1];
-    long    longValue;
-    char    *end = Q_NULLPTR, textValue[SMALL_STRING_LENGTH];
-    bool    match;
-
-    QString pv = pvo.trimmed();
-
-    //ControlsInterface * plugininterface = (ControlsInterface *) w->property("Interface").value<void *>();
-    ControlsInterface *plugininterface = getPluginInterface((QWidget*) w);
+    ControlsInterface *plugininterface = getPluginInterface(w);
     if(plugininterface == (ControlsInterface *) Q_NULLPTR) return;
+    knobData *kPtr = mutexKnobDataP->getMutexKnobDataPV(w, pvo.trimmed());
+    if(kPtr == (knobData *) Q_NULLPTR || index < 0) return;
 
-    FormatType fTypeNew;
+    FormatType format = decimal;
+    if(fType == caWaveTable::octal) format = octal;
+    else if(fType == caWaveTable::hexadecimal) format = hexadecimal;
+    else if(fType == caWaveTable::string) format = string;
 
-    if(fType == caWaveTable::octal) fTypeNew = octal;
-    else if(fType == caWaveTable::hexadecimal) fTypeNew = hexadecimal;
-    else if(fType == caWaveTable::string) fTypeNew = string;
-    else fTypeNew = decimal;
+    QVector<float> floats;
+    QVector<double> doubles;
+    QVector<int16_t> shorts;
+    QVector<int32_t> longs;
+    QByteArray chars;
+    int count;
+    char textValue[SMALL_STRING_LENGTH];
+    qstrncpy(textValue, qasc(text), sizeof(textValue));
+    char *end = Q_NULLPTR;
 
-    qCDebug(caQtDMLibLog) << "treat requested wave";
-    knobData *kPtr = mutexKnobDataP->getMutexKnobDataPV(w, pv);
-    if(kPtr == (knobData *) Q_NULLPTR)return;
+    {
+        QMutexLocker locker(static_cast<QMutex *>(kPtr->mutex));
+        count = kPtr->edata.valueCount;
+        if(index >= count || kPtr->edata.dataB == (void *) Q_NULLPTR) return;
 
-    if(index >= kPtr->edata.valueCount) return;
-
-    QMutex *datamutex;
-    datamutex = (QMutex*) kPtr->mutex;
-    datamutex->lock();
-
-    qCDebug(caQtDMLibLog) << "fieldtype:" << kPtr->edata.fieldtype;
-    switch (kPtr->edata.fieldtype) {
-
-    case caINT:
-    case caLONG:
-    case caCHAR:
-        qstrncpy(textValue, qasc(text),SMALL_STRING_LENGTH);
-        longValue = getLongValueFromString(textValue, fTypeNew, &end);
-
-        if(kPtr->edata.fieldtype == caLONG) {
-            int32_t* P = (int32_t*) kPtr->edata.dataB;
-            P[index] = (int32_t) longValue;
-            if(!plugininterface->pvSetWave(kPtr,  fdata, ddata, data16, P, sdata, kPtr->edata.valueCount,
-                                  (char*) qasc(w->objectName().toLower()), errmess))
-            {
-                plugininterface->pvSetWave((char*) kPtr->pv,  fdata, ddata, data16, P, sdata, kPtr->edata.valueCount,
-                                  (char*) qasc(w->objectName().toLower()), errmess);
-            }
-        } else if(kPtr->edata.fieldtype == caINT) {
-            int16_t* P = (int16_t*) kPtr->edata.dataB;
-            P[index] = (int16_t) longValue;
-            if(!plugininterface->pvSetWave(kPtr, fdata, ddata, P, data32, sdata, kPtr->edata.valueCount,
-                                  (char*) qasc(w->objectName().toLower()), errmess))
-            {
-                plugininterface->pvSetWave((char*) kPtr->pv, fdata, ddata, P, data32, sdata, kPtr->edata.valueCount,
-                                  (char*) qasc(w->objectName().toLower()), errmess);
-            }
-        } else {
-            if(fTypeNew == string) {
-                char* P = (char*) kPtr->edata.dataB;
-                P[index] = textValue[0];
-                if(!plugininterface->pvSetWave(kPtr,  fdata, ddata, data16, data32, P, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess))
-                {
-                    plugininterface->pvSetWave((char*) kPtr->pv,  fdata, ddata, data16, data32, P, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess);
-                }
-            } else {
-                char* P = (char*) kPtr->edata.dataB;
-                P[index] = (char) ((int) longValue);
-                if(!plugininterface->pvSetWave(kPtr, fdata, ddata, data16, data32, P, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess))
-                {
-                    plugininterface->pvSetWave((char*) kPtr->pv, fdata, ddata, data16, data32, P, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess);
-                }
-            }
+        int elementSize;
+        switch(kPtr->edata.fieldtype) {
+        case caFLOAT: elementSize = sizeof(float); break;
+        case caDOUBLE: elementSize = sizeof(double); break;
+        case caINT: elementSize = sizeof(int16_t); break;
+        case caLONG: elementSize = sizeof(int32_t); break;
+        case caCHAR: elementSize = sizeof(char); break;
+        default:
+            locker.unlock();
+            postMessage(QtDebugMsg, (char *) "Unsupported waveform type for writing");
+            return;
         }
+        if(qint64(count) * elementSize > kPtr->edata.dataSize) return;
 
-
-        break;
-
-    case caSTRING:
-        snprintf(asc, MAX_STRING_LENGTH, "writing of strings for treatRequestedWave is not yet supported\n");
-        postMessage(QtDebugMsg, asc);
-        break;
-
-    case caFLOAT:
-    case caDOUBLE:
-        match = false;
-        // Treat as a double
-        qstrncpy(textValue, qasc(text),SMALL_STRING_LENGTH);
-        value = getDoubleValueFromString(textValue, fTypeNew, &end);
-        if(*end == '\0' && end != textValue) {        // decoded
-            match = true;
-        }
-        if(match) {
+        // Own the write buffer so synchronous plugin updates can replace dataB.
+        switch(kPtr->edata.fieldtype) {
+        case caFLOAT:
+        case caDOUBLE: {
+            const double value = getDoubleValueFromString(textValue, format, &end);
+            if(*end != '\0' || end == textValue) {
+                locker.unlock();
+                char message[MAX_STRING_LENGTH];
+                snprintf(message, sizeof(message), "Invalid value: pv=%s value= \"%s\"\n", kPtr->pv, textValue);
+                postMessage(QtDebugMsg, message);
+                return;
+            }
             if(kPtr->edata.fieldtype == caFLOAT) {
-                float* P = (float*) kPtr->edata.dataB;
-                P[index] = (float) value;
-                if(!plugininterface->pvSetWave(kPtr,  P, ddata, data16, data32, sdata, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess))
-                {
-                    plugininterface->pvSetWave((char*) kPtr->pv,  P, ddata, data16, data32, sdata, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess);
-                }
-            } else  {
-                double* P = (double*) kPtr->edata.dataB;
-                P[index] = value;
-                if(!plugininterface->pvSetWave(kPtr, fdata, P, data16, data32, sdata, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess))
-                {
-                    plugininterface->pvSetWave((char*) kPtr->pv, fdata, P, data16, data32, sdata, kPtr->edata.valueCount,
-                                     (char*) qasc(w->objectName().toLower()), errmess);
-                }
+                floats.resize(count);
+                memcpy(floats.data(), kPtr->edata.dataB, count * sizeof(float));
+                floats[index] = (float) value;
+            } else {
+                doubles.resize(count);
+                memcpy(doubles.data(), kPtr->edata.dataB, count * sizeof(double));
+                doubles[index] = value;
             }
-        } else {
-            char asc[MAX_STRING_LENGTH];
-            snprintf(asc, MAX_STRING_LENGTH, "Invalid value: pv=%s value= \"%s\"\n", kPtr->pv, textValue);
-            postMessage(QtDebugMsg, asc);
+            break;
         }
-        break;
-
-    default:
-        snprintf(asc, MAX_STRING_LENGTH, "unhandled epics type (%d) in treatRequestedWave\n", kPtr->edata.fieldtype);
-        postMessage(QtDebugMsg, asc);
+        case caINT: {
+            const long value = getLongValueFromString(textValue, format, &end);
+            shorts.resize(count);
+            memcpy(shorts.data(), kPtr->edata.dataB, count * sizeof(int16_t));
+            shorts[index] = (int16_t) value;
+            break;
+        }
+        case caLONG: {
+            const long value = getLongValueFromString(textValue, format, &end);
+            longs.resize(count);
+            memcpy(longs.data(), kPtr->edata.dataB, count * sizeof(int32_t));
+            longs[index] = (int32_t) value;
+            break;
+        }
+        case caCHAR:
+            chars = QByteArray(static_cast<const char *>(kPtr->edata.dataB), count);
+            chars[index] = format == string ? textValue[0]
+                : (char) ((int) getLongValueFromString(textValue, format, &end));
+            break;
+        }
     }
 
-    datamutex->unlock();
+    float *fdata = floats.isEmpty() ? Q_NULLPTR : floats.data();
+    double *ddata = doubles.isEmpty() ? Q_NULLPTR : doubles.data();
+    int16_t *data16 = shorts.isEmpty() ? Q_NULLPTR : shorts.data();
+    int32_t *data32 = longs.isEmpty() ? Q_NULLPTR : longs.data();
+    char *sdata = chars.isEmpty() ? Q_NULLPTR : chars.data();
+    QByteArray object = w->objectName().toLower().toLatin1();
+    char errmess[SMALL_STRING_LENGTH] = {};
+    // Do not hold the data mutex across a plugin call.
+    if(!plugininterface->pvSetWave(kPtr, fdata, ddata, data16, data32, sdata,
+                                  count, object.data(), errmess)) {
+        plugininterface->pvSetWave(kPtr->pv, fdata, ddata, data16, data32, sdata,
+                                   count, object.data(), errmess);
+    }
 }
 
 

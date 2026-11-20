@@ -1,0 +1,1114 @@
+/*
+ *  This file is part of the caQtDM Framework, developed at the Paul Scherrer Institut,
+ *  Villigen, Switzerland
+ *
+ *  The caQtDM Framework is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  The caQtDM Framework is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with the caQtDM Framework.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *  Copyright (c) 2026
+ *
+ *  Author:
+ *    Julian Houba
+ *  Contact details:
+ *    julian.houba@psi.ch
+ */
+
+#include "tst_cascript.h"
+#include "cascript.h"
+#include "cascriptdialog.h"
+#include "fakeformwindow.h"
+
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QJsonDocument>
+#include <QFile>
+#include <QElapsedTimer>
+#include <QFormBuilder>
+#include <QMetaProperty>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+#include <QTest>
+#include <QTimer>
+#include <QTableWidget>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <memory>
+
+namespace {
+class ScriptFormBuilder : public QFormBuilder
+{
+protected:
+    DomProperty *createProperty(QObject *object, const QString &name, const QVariant &value) override
+    {
+        const int index = object->metaObject()->indexOfProperty(name.toUtf8().constData());
+        if (index >= 0 && object->metaObject()->property(index).isEnumType()) {
+            // Older QFormBuilder versions only serialize enums carried by integer variants.
+            return QFormBuilder::createProperty(object, name, QVariant(value.toInt()));
+        }
+        return QFormBuilder::createProperty(object, name, value);
+    }
+
+    QWidget *createWidget(const QString &widgetName, QWidget *parent, const QString &name) override
+    {
+        if (widgetName == QStringLiteral("caScript")) {
+            caScript *widget = new caScript(parent);
+            widget->setObjectName(name);
+            return widget;
+        }
+        return QFormBuilder::createWidget(widgetName, parent, name);
+    }
+};
+}
+
+void TestCaScript::scriptPropertyIsInitiallyEmptyAndWritable()
+{
+    caScript widget;
+    const int index = widget.metaObject()->indexOfProperty("script");
+    QVERIFY(index >= 0);
+
+    const QMetaProperty property = widget.metaObject()->property(index);
+    QCOMPARE(property.userType(), int(QMetaType::QString));
+    QVERIFY(property.isReadable());
+    QVERIFY(property.isWritable());
+    QCOMPARE(property.read(&widget).toString(), QString());
+
+    const QString script = QStringLiteral("// Grüezi\noutputs.result.value = 42;\n");
+    QVERIFY(property.write(&widget, script));
+    QCOMPARE(property.read(&widget).toString(), script);
+}
+
+void TestCaScript::duplicateInputAliasesAreRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("score")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+}
+
+void TestCaScript::distinctInputAliasesAreAccepted()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+
+    QVERIFY(errors.isEmpty());
+}
+
+void TestCaScript::inputAliasCollidingWithChannelNameIsRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QStringLiteral("internal://scriptFactor"), QString()},
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("internal://scriptFactor")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("internal://scriptFactor")));
+}
+
+void TestCaScript::emptyInputChannelWithAliasIsRejected()
+{
+    const QStringList errors = caScript::validateInputChannels({
+        {QString(), QStringLiteral("score")}
+    });
+
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+}
+
+void TestCaScript::inputConfigurationErrorsReflectCurrentInputs()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("score")}
+    });
+
+    const QStringList errors = widget.inputConfigurationErrors();
+    QCOMPARE(errors.size(), 1);
+    QVERIFY(errors.first().contains(QStringLiteral("score")));
+
+    QSignalSpy diagnostics(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(diagnostics.count(), 1);
+    QVERIFY(diagnostics.first().first().toString().contains("score"));
+
+    widget.setInputChannels({
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+
+    QVERIFY(widget.inputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::invalidInputJsonPreservesInputsAndCanBeCorrected()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("internal://scriptFactor"), QStringLiteral("factor")}
+    });
+    const QString previousJson = widget.getChannels();
+
+    widget.setChannels(QStringLiteral("[{"));
+    QVERIFY(!widget.inputConfigurationErrors().isEmpty());
+    QCOMPARE(widget.getChannels(), previousJson);
+    const QList<caScript::InputChannel> previousInputs = widget.getInputChannels();
+    QCOMPARE(previousInputs.size(), 1);
+    QCOMPARE(previousInputs.first().channel, QStringLiteral("internal://scriptFactor"));
+    QCOMPARE(previousInputs.first().alias, QStringLiteral("factor"));
+
+    widget.setChannels(QStringLiteral(
+        "[{\"channel\":\"epics3://PACMAN:PACMAN_USER_SCORE\",\"alias\":\"score\"}]"));
+    QVERIFY(widget.inputConfigurationErrors().isEmpty());
+    const QList<caScript::InputChannel> correctedInputs = widget.getInputChannels();
+    QCOMPARE(correctedInputs.size(), 1);
+    QCOMPARE(correctedInputs.first().channel, QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"));
+    QCOMPARE(correctedInputs.first().alias, QStringLiteral("score"));
+}
+
+void TestCaScript::simpleScriptCompletesAsynchronously()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral(
+        "const answer = 6 * 7;\n"
+        "if (answer !== 42) throw new Error('Unexpected result');\n"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    widget.executeScript();
+
+    QCOMPARE(finished.count(), 0);
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> arguments = finished.first();
+    QCOMPARE(arguments.size(), 1);
+    QCOMPARE(arguments.first().userType(), int(QMetaType::Bool));
+    QVERIFY(arguments.first().toBool());
+}
+
+void TestCaScript::runtimeErrorIsReportedAndNextRunSucceeds()
+{
+    caScript widget;
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.setScript(QStringLiteral("throw new Error('Test failure');"));
+
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> failed = finished.takeFirst();
+    QCOMPARE(failed.size(), 1);
+    QCOMPARE(failed.first().userType(), int(QMetaType::Bool));
+    QVERIFY(!failed.first().toBool());
+
+    widget.setScript(QStringLiteral("const answer = 6 * 7;"));
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> succeeded = finished.first();
+    QCOMPARE(succeeded.size(), 1);
+    QCOMPARE(succeeded.first().userType(), int(QMetaType::Bool));
+    QVERIFY(succeeded.first().toBool());
+}
+
+void TestCaScript::thrownStringIsReportedAsFailure()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral("throw 'Fehler';"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    const QList<QVariant> arguments = finished.first();
+    QCOMPARE(arguments.size(), 1);
+    QCOMPARE(arguments.first().userType(), int(QMetaType::Bool));
+    QVERIFY(!arguments.first().toBool());
+}
+
+void TestCaScript::scriptExecutionKeepsGuiEventLoopResponsive()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral(
+        "const end = Date.now() + 400;\n"
+        "while (Date.now() < end) {}\n"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+
+    bool timerFired = false;
+    bool timerFiredBeforeCompletion = false;
+    QTimer timer;
+    timer.setSingleShot(true);
+    connect(&timer, &QTimer::timeout, &widget, [&]() {
+        timerFired = true;
+        timerFiredBeforeCompletion = finished.isEmpty();
+    });
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    timer.start(20);
+    widget.executeScript();
+    QVERIFY2(elapsed.elapsed() < 300, "Starting the script blocked the GUI thread.");
+
+    QTRY_VERIFY(timerFired);
+    QVERIFY(timerFiredBeforeCompletion);
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QFile file(directory.filePath(QStringLiteral("cascript.ui")));
+
+    QWidget panel;
+    panel.setObjectName(QStringLiteral("panel"));
+    QVBoxLayout *layout = new QVBoxLayout(&panel);
+    caScript *scriptWidget = new caScript(&panel);
+    scriptWidget->setObjectName(QStringLiteral("scriptWidget"));
+    layout->addWidget(scriptWidget);
+    const QString script = QStringLiteral("// Grüezi <>&\noutputs.result.value = inputs.score.value;\n");
+    scriptWidget->setScript(script);
+    scriptWidget->setExecutionMode(caScript::DataDriven);
+    scriptWidget->setTriggerMode(caScript::SelectedInput);
+    scriptWidget->setTriggerInput(QStringLiteral("score"));
+    scriptWidget->setTriggerInterval(250);
+    const QList<caScript::InputChannel> inputs = {
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QString()}
+    };
+    scriptWidget->setInputChannels(inputs);
+    scriptWidget->setOutputChannels({{QStringLiteral("internal://scriptResult"), QStringLiteral("result")}});
+
+    ScriptFormBuilder builder;
+    builder.clearPluginPaths();
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    builder.save(&file, &panel);
+    QVERIFY(file.flush());
+    QVERIFY(file.size() > 0);
+    file.close();
+
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray savedUi = file.readAll();
+    QVERIFY2(savedUi.contains("name=\"executionMode\""), "Execution mode was omitted while saving the UI.");
+    QVERIFY2(savedUi.contains("name=\"triggerMode\""), "Trigger mode was omitted while saving the UI.");
+    QVERIFY(file.seek(0));
+    std::unique_ptr<QWidget> restoredPanel(builder.load(&file));
+    QVERIFY(restoredPanel != nullptr);
+    caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
+    QVERIFY(restored != nullptr);
+    QCOMPARE(restored->getScript(), script);
+    QCOMPARE(restored->getExecutionMode(), caScript::DataDriven);
+    QCOMPARE(restored->getTriggerMode(), caScript::SelectedInput);
+    QCOMPARE(restored->getTriggerInput(), QStringLiteral("score"));
+    QCOMPARE(restored->getTriggerInterval(), 250);
+    QCOMPARE(restored->getOutputChannelsJson(), scriptWidget->getOutputChannelsJson());
+    const QList<caScript::InputChannel> restoredInputs = restored->getInputChannels();
+    QCOMPARE(restoredInputs.size(), inputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+        QCOMPARE(restoredInputs.at(i).channel, inputs.at(i).channel);
+        QCOMPARE(restoredInputs.at(i).alias, inputs.at(i).alias);
+    }
+    QVERIFY(restored->inputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::latin1DecodingPreservesInputSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("internal://text"), QStringLiteral("text")}
+    });
+    widget.updateInputValue(0, QStringLiteral("Gr\uFFFDezi"));
+    widget.updateInputRawBytes(0, QByteArray::fromHex("4772fc657a69"));
+    widget.setScript(QStringLiteral(
+        "const text = inputs.text;\n"
+        "const before = Array.from(text.rawBytes);\n"
+        "if (text.fromLatin1() !== 'Grüezi') throw new Error('Incorrect Latin-1 decoding');\n"
+        "if (text.value !== 'Gr\\uFFFDezi') throw new Error('Changed standard value');\n"
+        "if (text.rawBytes.length !== before.length) throw new Error('Changed byte count');\n"
+        "for (let i = 0; i < before.length; ++i) {\n"
+        "    if (text.rawBytes[i] !== before[i]) throw new Error('Changed raw byte');\n"
+        "}"));
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::utf8DecodingPreservesInputSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({
+        {QStringLiteral("internal://text"), QStringLiteral("text")}
+    });
+    widget.updateInputValue(0, QStringLiteral("Grüezi"));
+    widget.updateInputRawBytes(0, QByteArray::fromHex("4772c3bc657a69"));
+    widget.setScript(QStringLiteral(
+        "const text = inputs.text;\n"
+        "const before = Array.from(text.rawBytes);\n"
+        "if (text.fromUtf8() !== 'Grüezi') throw new Error('Incorrect UTF-8 decoding');\n"
+        "if (text.value !== 'Grüezi') throw new Error('Changed standard value');\n"
+        "if (text.rawBytes.length !== before.length) throw new Error('Changed byte count');\n"
+        "for (let i = 0; i < before.length; ++i) {\n"
+        "    if (text.rawBytes[i] !== before[i]) throw new Error('Changed raw byte');\n"
+        "}"));
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.executeScript();
+
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::inputReconfigurationClearsSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://old"), QStringLiteral("sample")}});
+    widget.updateInputValue(0, 1);
+    widget.updateInputRawBytes(0, QByteArray("old"));
+    widget.updateInputMetadata(0, {
+        {QStringLiteral("fieldtype"), int(caScript::Enum)},
+        {QStringLiteral("label"), QStringLiteral("ON")},
+        {QStringLiteral("enumStrings"), QStringList({QStringLiteral("OFF"), QStringLiteral("ON")})}
+    });
+    widget.setInputChannels({{QStringLiteral("internal://new"), QStringLiteral("sample")}});
+    widget.setScript(QStringLiteral(
+        "if (Object.keys(inputs.sample).length !== 0) throw new Error('Stale input snapshot');"));
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(finished.isValid());
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::outputsAreResetBetweenRuns()
+{
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.setScript(QStringLiteral("outputs.result.value = 42;"));
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QCOMPARE(values.count(), 1);
+    QCOMPARE(values.first().first().toMap().value(QStringLiteral("result")).toInt(), 42);
+
+    widget.setScript(QStringLiteral("if ('value' in outputs.result) throw new Error('Stale output');"));
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(values.count(), 1);
+}
+
+void TestCaScript::failedScriptDiscardsOutputs_data()
+{
+    QTest::addColumn<QString>("script");
+    QTest::newRow("error") << QStringLiteral("outputs.result.value = 42; throw new Error('Failed');");
+    QTest::newRow("primitive") << QStringLiteral("outputs.result.value = 42; throw 'Failed';");
+    QTest::newRow("syntax") << QStringLiteral("outputs.result.value = 42; const = ;");
+    QTest::newRow("getter") << QStringLiteral(
+        "Object.defineProperty(outputs.result, 'value', {get() { throw new Error('Failed'); }});");
+}
+
+void TestCaScript::failedScriptDiscardsOutputs()
+{
+    QFETCH(QString, script);
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.setScript(script);
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(values.count(), 0);
+}
+
+void TestCaScript::invalidOutputJsonPreservesConfiguration()
+{
+    caScript widget;
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    const QString original = widget.getOutputChannelsJson();
+    widget.setOutputChannelsJson(QStringLiteral("[{\"channel\": 42}]"));
+    QCOMPARE(widget.getOutputChannelsJson(), original);
+    QVERIFY(!widget.outputConfigurationErrors().isEmpty());
+    widget.setOutputChannelsJson(original);
+    QVERIFY(widget.outputConfigurationErrors().isEmpty());
+    widget.setOutputChannels({{QStringLiteral("internal://one"), QStringLiteral("same")},
+                              {QStringLiteral("internal://two"), QStringLiteral("same")}});
+    QVERIFY(!widget.outputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::explicitScalarConversions_data()
+{
+    QTest::addColumn<QVariant>("value");
+    QTest::addColumn<QString>("target");
+    QTest::addColumn<QVariant>("expected");
+    QTest::newRow("positive-half") << QVariant(3.5) << QStringLiteral("Short") << QVariant(4.0);
+    QTest::newRow("negative-half") << QVariant(-3.5) << QStringLiteral("Long") << QVariant(-4.0);
+    QTest::newRow("zero") << QVariant(0) << QStringLiteral("Short") << QVariant(0.0);
+    QTest::newRow("short-min") << QVariant(-32768) << QStringLiteral("Short") << QVariant(-32768.0);
+    QTest::newRow("short-max") << QVariant(32767) << QStringLiteral("Short") << QVariant(32767.0);
+    QTest::newRow("long-min") << QVariant(-2147483648.0) << QStringLiteral("Long") << QVariant(-2147483648.0);
+    QTest::newRow("long-max") << QVariant(2147483647.0) << QStringLiteral("Long") << QVariant(2147483647.0);
+    QTest::newRow("char") << QVariant(65) << QStringLiteral("Char") << QVariant(65.0);
+    QTest::newRow("enum") << QVariant(2) << QStringLiteral("Enum") << QVariant(2.0);
+    QTest::newRow("float") << QVariant(0.1) << QStringLiteral("Float") << QVariant(double(float(0.1)));
+    QTest::newRow("double") << QVariant(QStringLiteral("3.75")) << QStringLiteral("Double") << QVariant(3.75);
+    QTest::newRow("numeric-string") << QVariant(QStringLiteral("-3.5")) << QStringLiteral("Short") << QVariant(-4.0);
+    QTest::newRow("number-as-string") << QVariant(3.75) << QStringLiteral("String") << QVariant(QStringLiteral("3.75"));
+    QTest::newRow("string") << QVariant(QStringLiteral("Grüezi")) << QStringLiteral("String") << QVariant(QStringLiteral("Grüezi"));
+    QTest::newRow("empty-string") << QVariant(QString()) << QStringLiteral("String") << QVariant(QString());
+    QTest::newRow("short-overflow") << QVariant(32767.5) << QStringLiteral("Short") << QVariant();
+    QTest::newRow("long-overflow") << QVariant(2147483648.0) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("char-negative") << QVariant(-1) << QStringLiteral("Char") << QVariant();
+    QTest::newRow("char-overflow") << QVariant(256) << QStringLiteral("Char") << QVariant();
+    QTest::newRow("enum-overflow") << QVariant(65536) << QStringLiteral("Enum") << QVariant();
+    QTest::newRow("float-overflow") << QVariant(1e100) << QStringLiteral("Float") << QVariant();
+    QTest::newRow("invalid-text") << QVariant(QStringLiteral("not a number")) << QStringLiteral("Double") << QVariant();
+    QTest::newRow("nan-integer") << QVariant(qQNaN()) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("infinity-integer") << QVariant(qInf()) << QStringLiteral("Long") << QVariant();
+    QTest::newRow("unknown-type") << QVariant(42) << QStringLiteral("Missing") << QVariant();
+}
+
+void TestCaScript::explicitScalarConversions()
+{
+    QFETCH(QVariant, value);
+    QFETCH(QString, target);
+    QFETCH(QVariant, expected);
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://sample"), QStringLiteral("sample")}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")}});
+    widget.updateInputValue(0, value);
+    widget.setScript(QStringLiteral(
+        "outputs.result.value = 99;\n"
+        "outputs.result.value = inputs.sample.convert(EpicsType.%1);").arg(target));
+    QSignalSpy values(&widget, &caScript::outputValuesReady);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.first().first().toBool(), expected.isValid());
+    QCOMPARE(values.count(), expected.isValid() ? 1 : 0);
+    if (!expected.isValid()) return;
+    const QVariant actual = values.first().first().toMap().value(QStringLiteral("result"));
+    QCOMPARE(actual.userType() == QMetaType::QString, expected.userType() == QMetaType::QString);
+    if (expected.userType() == QMetaType::QString) QCOMPARE(actual.toString(), expected.toString());
+    else QCOMPARE(actual.toDouble(), expected.toDouble());
+}
+
+void TestCaScript::conversionsPreserveInputSnapshot()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://text"), QStringLiteral("text")}});
+    widget.updateInputValue(0, QStringLiteral("3.5"));
+    widget.updateInputRawBytes(0, QByteArray("3.5"));
+    widget.setScript(QStringLiteral(
+        "const channel = inputs.text;\n"
+        "if (channel.convert(EpicsType.Short) !== 4) throw new Error('Incorrect integer');\n"
+        "if (channel.convert(EpicsType.Double) !== 3.5) throw new Error('Incorrect number');\n"
+        "if (channel.value !== '3.5') throw new Error('Changed input');\n"
+        "if (channel.rawBytes.length !== 3 || channel.rawBytes[0] !== 51\n"
+        "    || channel.rawBytes[1] !== 46 || channel.rawBytes[2] !== 53)\n"
+        "    throw new Error('Changed bytes');"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::waveformSnapshotUsesJavaScriptArray()
+{
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("internal://samples"), QStringLiteral("samples")}});
+    widget.updateInputValue(0, QVariantList{-2, 0, 3.75});
+    widget.updateInputMetadata(0, {{QStringLiteral("dim"), QVariantList{0, 0}},
+                                  {QStringLiteral("enumStrings"), QStringList{"OFF", "ON"}}});
+    widget.setScript(QStringLiteral(
+        "const values = inputs.samples.value;\n"
+        "if (!Array.isArray(values) || values.length !== 3 || values[2] !== 3.75)\n"
+        "    throw new Error('Incorrect JavaScript array');\n"
+        "if (!Array.isArray(inputs.samples.dim) || inputs.samples.dim.length !== 2\n"
+        "    || !Array.isArray(inputs.samples.enumStrings) || inputs.samples.enumStrings[1] !== 'ON')\n"
+        "    throw new Error('Incorrect metadata arrays');"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt()
+{
+    QFETCH(QString, property);
+    caScript widget;
+    widget.setInputChannels({{QStringLiteral("epics3://source"), QStringLiteral("source")},
+                             {QStringLiteral("internal://factor"), QString()}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")},
+                              {QStringLiteral("internal://other"), QString()}});
+    const QString originalInputs = widget.getChannels();
+    const QString originalOutputs = widget.getOutputChannelsJson();
+    const auto expected = property == QStringLiteral("channels")
+        ? widget.getInputChannels() : widget.getOutputChannels();
+
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QVERIFY(table);
+    QCOMPARE(table->columnCount(), 2);
+    QCOMPARE(table->rowCount(), expected.size());
+    for (int row = 0; row < expected.size(); ++row) {
+        QVERIFY(table->item(row, 0));
+        QVERIFY(table->item(row, 1));
+        QCOMPARE(table->item(row, 0)->text(), expected.at(row).channel);
+        QCOMPARE(table->item(row, 1)->text(), expected.at(row).alias);
+    }
+    table->item(0, 0)->setText(QStringLiteral("internal://changed"));
+    table->item(0, 1)->setText(QStringLiteral("changedAlias"));
+    dialog.reject();
+    QCOMPARE(widget.getChannels(), originalInputs);
+    QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);
+}
+
+void TestCaScript::channelDialogAddsAndRemovesRows_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogAddsAndRemovesRows()
+{
+    QFETCH(QString, property);
+    caScript widget;
+    QVERIFY(widget.setProperty(property.toLatin1().constData(), QStringLiteral(
+        "[{\"channel\":\"internal://first\",\"alias\":\"first\"},"
+        "{\"channel\":\"internal://second\",\"alias\":\"\"}]")));
+    const QString originalInputs = widget.getChannels();
+    const QString originalOutputs = widget.getOutputChannelsJson();
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QPushButton *add = dialog.findChild<QPushButton *>(QStringLiteral("addChannel"));
+    QPushButton *remove = dialog.findChild<QPushButton *>(QStringLiteral("removeChannel"));
+    QVERIFY(table);
+    QVERIFY(add);
+    QVERIFY(remove);
+
+    add->click();
+    QCOMPARE(table->rowCount(), 3);
+    QVERIFY(table->item(2, 0));
+    QVERIFY(table->item(2, 1));
+    QVERIFY(table->item(2, 0)->text().isEmpty());
+    QVERIFY(table->item(2, 1)->text().isEmpty());
+    table->item(2, 0)->setText(QStringLiteral("internal://third"));
+    table->item(2, 1)->setText(QStringLiteral("third"));
+    table->selectRow(0);
+    remove->click();
+    QCOMPARE(table->rowCount(), 2);
+    QCOMPARE(table->item(0, 0)->text(), QStringLiteral("internal://second"));
+    QVERIFY(table->item(0, 1)->text().isEmpty());
+    QCOMPARE(table->item(1, 0)->text(), QStringLiteral("internal://third"));
+    QCOMPARE(table->item(1, 1)->text(), QStringLiteral("third"));
+    dialog.reject();
+    QCOMPARE(widget.getChannels(), originalInputs);
+    QCOMPARE(widget.getOutputChannelsJson(), originalOutputs);
+}
+
+void TestCaScript::channelDialogSavesThroughDesignerCursor_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogSavesThroughDesignerCursor()
+{
+    QFETCH(QString, property);
+    FakeFormWindow form;
+    caScript widget(&form);
+    widget.setInputChannels({{QStringLiteral("epics3://source"), QStringLiteral("source")},
+                             {QStringLiteral("internal://factor"), QString()}});
+    widget.setOutputChannels({{QStringLiteral("internal://result"), QStringLiteral("result")},
+                              {QStringLiteral("internal://other"), QString()}});
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QDialogButtonBox *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(table);
+    QVERIFY(buttons);
+    QPushButton *save = buttons->button(QDialogButtonBox::Ok);
+    QVERIFY(save);
+    table->item(0, 0)->setText(QStringLiteral("internal://changed"));
+    table->item(0, 1)->setText(QStringLiteral("changed"));
+    const QString secondChannel = table->item(1, 0)->text();
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    save->click();
+    QCOMPARE(accepted.count(), 1);
+    const auto saved = form.fakeCursor()->properties;
+    QCOMPARE(saved.size(), 1);
+    QVERIFY(saved.contains(property));
+    const QJsonDocument expected = QJsonDocument::fromJson(QStringLiteral(
+        "[{\"channel\":\"internal://changed\",\"alias\":\"changed\"},"
+        "{\"channel\":\"%1\",\"alias\":\"\"}]").arg(secondChannel).toUtf8());
+    QVERIFY(QJsonDocument::fromJson(saved.value(property).toString().toUtf8()) == expected);
+}
+
+void TestCaScript::channelDialogRejectsInvalidConfiguration_data()
+{
+    QTest::addColumn<QString>("property");
+    QTest::newRow("inputs") << QStringLiteral("channels");
+    QTest::newRow("outputs") << QStringLiteral("outputChannels");
+}
+
+void TestCaScript::channelDialogRejectsInvalidConfiguration()
+{
+    QFETCH(QString, property);
+    FakeFormWindow form;
+    caScript widget(&form);
+    QVERIFY(widget.setProperty(property.toLatin1().constData(), QStringLiteral(
+        "[{\"channel\":\"internal://first\",\"alias\":\"first\"},"
+        "{\"channel\":\"internal://second\",\"alias\":\"second\"}]")));
+    CaScriptDialog dialog(&widget, property);
+    QTableWidget *table = dialog.findChild<QTableWidget *>();
+    QDialogButtonBox *buttons = dialog.findChild<QDialogButtonBox *>();
+    QVERIFY(table);
+    QVERIFY(buttons);
+    QPushButton *save = buttons->button(QDialogButtonBox::Ok);
+    QVERIFY(save);
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    table->item(1, 1)->setText(QStringLiteral("first"));
+    save->click();
+    QCOMPARE(accepted.count(), 0);
+    QVERIFY(form.fakeCursor()->properties.isEmpty());
+    QLabel *error = dialog.findChild<QLabel *>(QStringLiteral("configurationError"));
+    QVERIFY(error);
+    QVERIFY(!error->text().isEmpty());
+    table->item(1, 1)->setText(QStringLiteral("second"));
+    table->item(0, 0)->setText(QStringLiteral("   "));
+    save->click();
+    QCOMPARE(accepted.count(), 0);
+    QVERIFY(form.fakeCursor()->properties.isEmpty());
+    QVERIFY(!error->text().isEmpty());
+    table->item(0, 0)->setText(QStringLiteral("internal://first"));
+    save->click();
+    QCOMPARE(accepted.count(), 1);
+    QVERIFY(form.fakeCursor()->properties.contains(property));
+}
+
+void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
+{
+    const QList<caScript::InputChannel> inputs = {
+        {QStringLiteral("epics3://PACMAN:PACMAN_USER_SCORE"), QStringLiteral("score")},
+        {QStringLiteral("internal://scriptFactor"), QString()}
+    };
+    caScript widget;
+    widget.setInputChannels(inputs);
+
+    const int index = widget.metaObject()->indexOfProperty("channels");
+    QVERIFY(index >= 0);
+    QVERIFY(widget.metaObject()->property(index).isStored());
+
+    const QString json = widget.property("channels").toString();
+    const QJsonDocument expected = QJsonDocument::fromJson(R"([
+        {"channel": "epics3://PACMAN:PACMAN_USER_SCORE", "alias": "score"},
+        {"channel": "internal://scriptFactor", "alias": ""}
+    ])");
+    QVERIFY(QJsonDocument::fromJson(json.toUtf8()) == expected);
+
+    caScript restored;
+    QVERIFY(restored.setProperty("channels", json));
+    const QList<caScript::InputChannel> restoredInputs = restored.getInputChannels();
+    QCOMPARE(restoredInputs.size(), inputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+        QCOMPARE(restoredInputs.at(i).channel, inputs.at(i).channel);
+        QCOMPARE(restoredInputs.at(i).alias, inputs.at(i).alias);
+    }
+    QVERIFY(restored.inputConfigurationErrors().isEmpty());
+}
+
+void TestCaScript::executionModesRespectConnectionFreshness()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("executionMode", caScript::DataDriven));
+    const QMetaProperty property = widget.metaObject()->property(widget.metaObject()->indexOfProperty("executionMode"));
+    QVERIFY(property.isEnumType());
+    widget.setInputChannels({{"first", "a"}, {"second", "b"}});
+    widget.setScript("if (inputs.a.value !== 1 || inputs.b.value !== 2) throw 'bad snapshot';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QVERIFY(finished.isEmpty());
+    const QVariantMap connected = {{"connected", true}};
+    widget.updateInputMetadata(0, connected);
+    widget.updateInputValue(0, 1);
+    widget.updateInputMetadata(1, connected);
+    widget.executeScript();
+    QVERIFY(finished.isEmpty());
+    widget.updateInputValue(1, 2);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    widget.updateInputValue(0, 1);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    widget.updateInputMetadata(1, {{"connected", false}});
+    widget.executeScript();
+    QCOMPARE(finished.count(), 2);
+    widget.updateInputMetadata(1, connected);
+    widget.executeScript();
+    QCOMPARE(finished.count(), 2);
+    widget.updateInputValue(1, 2);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 3);
+    QVERIFY(finished.last().first().toBool());
+    widget.setInputChannels(widget.getInputChannels());
+    widget.executeScript();
+    QCOMPARE(finished.count(), 3);
+}
+
+void TestCaScript::constantModeAllowsMissingInputs()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("executionMode", caScript::Constant));
+    widget.setScript("if (Object.keys(inputs).length !== 0) throw 'unexpected input';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    widget.setInputChannels({{"source", "a"}});
+    widget.setScript("if ('value' in inputs.a) throw 'unexpected value';");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    widget.updateInputMetadata(0, {{"connected", true}});
+    widget.updateInputValue(0, 42);
+    widget.updateInputMetadata(0, {{"connected", false}});
+    widget.setScript("if (inputs.a.connected !== false || inputs.a.value !== 42) throw 'lost snapshot';");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 3);
+    QVERIFY(finished.last().first().toBool());
+}
+
+void TestCaScript::monitorTriggerPolicies_data()
+{
+    QTest::addColumn<int>("trigger");
+    QTest::newRow("any-input") << 1;
+    QTest::newRow("selected-input") << 2;
+    QTest::newRow("minimum-interval") << 3;
+}
+
+void TestCaScript::monitorTriggerPolicies()
+{
+    QFETCH(int, trigger);
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", trigger));
+    QVERIFY(widget.setProperty("triggerInput", "b"));
+    QVERIFY(widget.setProperty("triggerInterval", 1000));
+    widget.setExecutionMode(caScript::DataDriven);
+    widget.setInputChannels({{"first", "a"}, {"second", "b"}});
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("outputs.result.value = inputs.a.value + inputs.b.value;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    widget.updateInputMetadata(0, {{"connected", true}});
+    widget.updateInputValue(0, 1);
+    widget.updateInputMetadata(1, {{"connected", true}});
+    widget.updateInputValue(1, 2);
+    QVERIFY(finished.isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    widget.updateInputValue(0, 10);
+    int expected = trigger == 2 ? 0 : 1;
+    QTRY_COMPARE(finished.count(), expected);
+    widget.updateInputValue(1, 20);
+    if (trigger != 3) ++expected;
+    QTRY_COMPARE(finished.count(), expected);
+    if (trigger == 3) {
+        QTest::qWait(1050);
+        QCOMPARE(finished.count(), expected); // No delayed replay, but the cache has the latest b.
+        widget.updateInputValue(0, 11);
+        ++expected;
+        QTRY_COMPARE(finished.count(), expected);
+    }
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), trigger == 3 ? 31.0 : 30.0);
+}
+
+void TestCaScript::periodicTriggerRespectsMode_data()
+{
+    QTest::addColumn<int>("mode");
+    QTest::newRow("constant-without-data") << int(caScript::Constant);
+    QTest::newRow("data-driven-waits") << int(caScript::DataDriven);
+}
+
+void TestCaScript::periodicTriggerRespectsMode()
+{
+    QFETCH(int, mode);
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", 4));
+    QVERIFY(widget.setProperty("triggerInterval", 30));
+    widget.setExecutionMode(static_cast<caScript::ExecutionMode>(mode));
+    widget.setInputChannels({{"source", "a"}});
+    widget.setScript("if ('value' in inputs.a && inputs.a.value !== 42) throw 'bad value';");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QTest::qWait(60);
+    QVERIFY(finished.isEmpty()); // Designer construction must not start timers.
+    connect(&widget, &caScript::scriptFinished, &widget, [&widget]() {
+        widget.setProperty("triggerMode", 0);
+    });
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    if (mode == caScript::DataDriven) {
+        QTest::qWait(90);
+        QVERIFY(finished.isEmpty());
+        widget.updateInputMetadata(0, {{"connected", true}});
+        widget.updateInputValue(0, 42);
+        QVERIFY(finished.isEmpty());
+    }
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QTest::qWait(60);
+    QCOMPARE(finished.count(), 1);
+}
+
+void TestCaScript::busyMonitorTriggersAreWarnedAndNotQueued()
+{
+    caScript widget;
+    QVERIFY(widget.setProperty("triggerMode", 1));
+    widget.setInputChannels({{"source", "a"}});
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("var until = Date.now() + 100; while (Date.now() < until) {} outputs.result.value = inputs.a.value;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, SIGNAL(scriptWarning(QString)));
+    QVERIFY(warnings.isValid());
+    QVERIFY(QMetaObject::invokeMethod(&widget, "startTriggers", Qt::DirectConnection));
+    widget.updateInputValue(0, 10);
+    widget.updateInputValue(0, 20);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("running"));
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), 10.0);
+    QTest::qWait(150);
+    QCOMPARE(finished.count(), 1);
+    widget.updateInputValue(0, 30);
+    QTRY_COMPARE(finished.count(), 2);
+    QCOMPARE(outputs.last().first().toMap().value("result").toDouble(), 30.0);
+}
+
+void TestCaScript::timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns()
+{
+    caScript widget;
+    widget.setOutputChannels({{"target", "result"}});
+    const QString endless = QStringLiteral("outputs.result.value = 42; while (true) {}");
+    widget.setScript(endless);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, SIGNAL(scriptError(QString)));
+    // Four timeouts must still allow a successful run, which resets the streak.
+    for (int i = 1; i <= 4; ++i) {
+        widget.executeScript();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), i, 2500);
+        QVERIFY(!finished.last().first().toBool());
+        QVERIFY(outputs.isEmpty());
+    }
+    widget.setScript("outputs.result.value = 7;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 5);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(outputs.count(), 1);
+    QCOMPARE(outputs.first().first().toMap().value("result").toDouble(), 7.0);
+    widget.setScript(endless);
+    for (int i = 6; i <= 10; ++i) {
+        widget.executeScript();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), i, 2500);
+        QVERIFY(!finished.last().first().toBool());
+        QCOMPARE(outputs.count(), 1);
+    }
+    QCOMPARE(warnings.count(), 9);
+    QVERIFY(errors.isValid());
+    QCOMPARE(errors.count(), 10); // Nine timeouts and a distinct disabled message.
+    QVERIFY(errors.last().first().toString().contains("5 consecutive timeouts"));
+    widget.setScript("outputs.result.value = 99;");
+    widget.executeScript();
+    QTest::qWait(60);
+    QCOMPARE(finished.count(), 10);
+    QCOMPARE(outputs.count(), 1);
+    // Reload means constructing a new widget; no runtime property re-enables the old one.
+    caScript reloaded;
+    reloaded.setScript("var ok = true;");
+    QSignalSpy reloadedFinished(&reloaded, &caScript::scriptFinished);
+    reloaded.executeScript();
+    QTRY_COMPARE(reloadedFinished.count(), 1);
+    QVERIFY(reloadedFinished.first().first().toBool());
+}
+
+void TestCaScript::slowSuccessfulScriptOnlyWarns()
+{
+    caScript widget;
+    widget.setOutputChannels({{"target", "result"}});
+    widget.setScript("var end = Date.now() + 200; while (Date.now() < end) {} outputs.result.value = 42;");
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, SIGNAL(scriptError(QString)));
+    QVERIFY(errors.isValid());
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("100 ms"));
+    QVERIFY(errors.isEmpty());
+    QCOMPARE(outputs.first().first().toMap().value("result").toDouble(), 42.0);
+    QTest::qWait(1000);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(errors.isEmpty());
+}
+
+void TestCaScript::closingBusyWidgetLeavesOtherWidgetResponsive()
+{
+    std::unique_ptr<caScript> busy(new caScript);
+    busy->setScript("while (true) {}");
+    busy->executeScript();
+    QTest::qWait(50);
+    caScript other;
+    other.setScript("var ok = true;");
+    QSignalSpy finished(&other, &caScript::scriptFinished);
+    other.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.first().first().toBool());
+    QElapsedTimer elapsed;
+    elapsed.start();
+    busy.reset();
+    QVERIFY2(elapsed.elapsed() < 1500, "Closing an interrupted widget blocked the GUI thread.");
+    other.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+}
+
+void TestCaScript::consoleMessagesPreserveLevelsAndSuccess()
+{
+    caScript widget;
+    widget.setScript("console.log('Grüezi', 42); console.warn('careful'); console.error('diagnostic');");
+    QSignalSpy info(&widget, SIGNAL(scriptInfo(QString)));
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QVERIFY(info.isValid());
+    for (int run = 1; run <= 2; ++run) {
+        widget.executeScript();
+        QTRY_COMPARE(finished.count(), run);
+        QVERIFY(finished.last().first().toBool());
+        QCOMPARE(info.count(), run);
+        QCOMPARE(warnings.count(), run);
+        QCOMPARE(errors.count(), run);
+        QCOMPARE(info.last().first().toString(), QStringLiteral("Grüezi 42"));
+        QCOMPARE(warnings.last().first().toString(), QStringLiteral("careful"));
+        QCOMPARE(errors.last().first().toString(), QStringLiteral("diagnostic"));
+    }
+}
+
+void TestCaScript::consoleFloodIsBoundedAndStillTimesOut()
+{
+    caScript widget;
+    QSignalSpy info(&widget, &caScript::scriptInfo);
+    QSignalSpy warnings(&widget, &caScript::scriptWarning);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.setScript("for (var i = 0; i < 1000; ++i) { console.log('xyz'); }");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(info.count(), 100);
+    QCOMPARE(warnings.count(), 1);
+    QVERIFY(warnings.first().first().toString().contains("Console message limit"));
+
+    info.clear();
+    warnings.clear();
+    widget.setScript("while (true) { console.log('xyz'); }");
+    int ticks = 0;
+    QTimer heartbeat;
+    connect(&heartbeat, &QTimer::timeout, &widget, [&]() { ++ticks; });
+    heartbeat.start(20);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    widget.executeScript();
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 3000);
+    QVERIFY(!finished.last().first().toBool());
+    QVERIFY(elapsed.elapsed() < 2500);
+    QVERIFY(ticks >= 5);
+    QCOMPARE(info.count(), 100);
+    QCOMPARE(warnings.count(), 2); // Console limit and 100 ms runtime warning.
+    QCOMPARE(errors.count(), 1);
+    QVERIFY(errors.first().first().toString().contains("1000 ms"));
+}
+
+void TestCaScript::scriptDiagnostics_data()
+{
+    QTest::addColumn<QString>("script");
+    QTest::addColumn<QString>("expected");
+    QTest::addColumn<bool>("lineTwo");
+    QTest::newRow("runtime") << QStringLiteral("var x = 1;\nthrow new Error('meaningful failure');")
+                            << QStringLiteral("meaningful failure") << true;
+    QTest::newRow("syntax") << QStringLiteral("const broken = ;") << QStringLiteral("SyntaxError") << false;
+    QTest::newRow("primitive") << QStringLiteral("throw 'primitive failure';") << QStringLiteral("primitive failure") << false;
+    QTest::newRow("conversion") << QStringLiteral("inputs.a.convert(EpicsType.Short);")
+                               << QStringLiteral("RangeError") << false;
+}
+
+void TestCaScript::scriptDiagnostics()
+{
+    QFETCH(QString, script);
+    QFETCH(QString, expected);
+    QFETCH(bool, lineTwo);
+    caScript widget;
+    widget.setInputChannels({{"source", "a"}});
+    widget.updateInputValue(0, 1e100);
+    widget.setScript(script);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.first().first().toBool());
+    QCOMPARE(errors.count(), 1);
+    const QString message = errors.first().first().toString();
+    QVERIFY2(message.contains(expected), qPrintable(message));
+    if (lineTwo) QVERIFY2(message.contains("line 2"), qPrintable(message));
+}
+
+void TestCaScript::debugDisplayCanBeToggledWithoutLosingLastOutput()
+{
+    caScript widget;
+    QVERIFY(!widget.getShow());
+    QVERIFY(widget.getLastOutputText().isEmpty());
+    QVERIFY(widget.setProperty("show", true));
+    QVERIFY(QMetaObject::invokeMethod(&widget, "updateLastOutput", Qt::DirectConnection,
+                                     Q_ARG(QString, QString("internal://result")), Q_ARG(QVariant, QVariant(42))));
+    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
+    QVERIFY(widget.setProperty("show", false));
+    QVERIFY(widget.setProperty("show", true));
+    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
+}

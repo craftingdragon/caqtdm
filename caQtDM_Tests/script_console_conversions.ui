@@ -1,0 +1,696 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>ScriptConsoleConversions</class>
+ <widget class="QMainWindow" name="ScriptConsoleConversions">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>840</width>
+    <height>610</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript: conversions and console flood</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="instructions">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>15</y>
+      <width>800</width>
+      <height>50</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>No IOC required. Confirm the input with Enter, then run conversions.
+Console flood buttons also call convert() repeatedly; inspect the message window and terminal.</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QLabel" name="sourceLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>80</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Double input (default 42.5)</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caTextEntry" name="sourceValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>80</y>
+      <width>400</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleSource</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="shortLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>135</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Short conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="shortValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>135</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleShort</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="longLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>172</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Long conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="longValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>172</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleLong</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="charLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>209</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Char conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="charValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>209</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleChar</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="enumLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>246</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Enum conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="enumValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>246</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleEnum</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="floatLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>283</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Float conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="floatValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>283</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleFloat</string>
+    </property>
+    <property name="precisionMode">
+     <enum>caLineEdit::User</enum>
+    </property>
+    <property name="precision">
+     <number>8</number>
+    </property>
+   </widget>
+   <widget class="QLabel" name="doubleLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>320</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Double conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="doubleValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>320</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleDouble</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="stringLabel">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>357</y>
+      <width>350</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>String conversion</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="stringValue">
+    <property name="geometry">
+     <rect>
+      <x>400</x>
+      <y>357</y>
+      <width>400</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>internal://scriptConsoleString</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="expected">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>400</y>
+      <width>800</width>
+      <height>48</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>At 42.5: Short / Long / Char / Enum = 43; Float / Double = 42.5; String = "42.5".
+At 32768: Short conversion throws; all previous results remain unchanged.</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="convert">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>460</y>
+      <width>250</width>
+      <height>38</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Run conversions</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="finite">
+    <property name="geometry">
+     <rect>
+      <x>290</x>
+      <y>460</y>
+      <width>250</width>
+      <height>38</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>1000 logs + conversions</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="endless">
+    <property name="geometry">
+     <rect>
+      <x>560</x>
+      <y>460</y>
+      <width>260</width>
+      <height>38</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Endless logs + conversions</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="floodExpected">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>510</y>
+      <width>800</width>
+      <height>82</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Flood: 100 console messages, then one suppression warning per run.
+Endless: warning after 100 ms, interrupted after 1 s. Five consecutive timeouts disable only this script.
+Click the finite button while the endless test runs: the viewer should remain responsive. Reload resets the timeout disable state.</string>
+    </property>
+    <property name="wordWrap">
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleSourceDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleSource</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>42.5</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>2</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleShortDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleShort</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleLongDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleLong</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleCharDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleChar</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleEnumDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleEnum</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleFloatDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleFloat</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>2</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleDoubleDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleDouble</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::Double</enum>
+    </property>
+    <property name="value">
+     <string>0</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+    <property name="precision">
+     <number>2</number>
+    </property>
+   </widget>
+   <widget class="genSoftPV" name="scriptConsoleStringDefinition">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="visible">
+     <bool>false</bool>
+    </property>
+    <property name="variable">
+     <string>scriptConsoleString</string>
+    </property>
+    <property name="dataType">
+     <enum>genSoftPV::DataType::String</enum>
+    </property>
+    <property name="value">
+     <string>pending</string>
+    </property>
+    <property name="persistent">
+     <bool>false</bool>
+    </property>
+   </widget>
+   <widget class="caScript" name="convertScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::TriggerMode::Manual</enum>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::ExecutionMode::DataDriven</enum>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://scriptConsoleSource"}]</string>
+    </property>
+    <property name="script">
+     <string>outputs.short.value = inputs.source.convert(EpicsType.Short);
+outputs.long.value = inputs.source.convert(EpicsType.Long);
+outputs.char.value = inputs.source.convert(EpicsType.Char);
+outputs.enum.value = inputs.source.convert(EpicsType.Enum);
+outputs.float.value = inputs.source.convert(EpicsType.Float);
+outputs.double.value = inputs.source.convert(EpicsType.Double);
+outputs.string.value = inputs.source.convert(EpicsType.String);
+console.log("Conversions completed; original input:", inputs.source.value);</string>
+    </property>
+    <property name="outputChannels">
+     <string>[{"alias": "short", "channel": "internal://scriptConsoleShort"}, {"alias": "long", "channel": "internal://scriptConsoleLong"}, {"alias": "char", "channel": "internal://scriptConsoleChar"}, {"alias": "enum", "channel": "internal://scriptConsoleEnum"}, {"alias": "float", "channel": "internal://scriptConsoleFloat"}, {"alias": "double", "channel": "internal://scriptConsoleDouble"}, {"alias": "string", "channel": "internal://scriptConsoleString"}]</string>
+    </property>
+   </widget>
+   <widget class="caScript" name="finiteScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::TriggerMode::Manual</enum>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::ExecutionMode::DataDriven</enum>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://scriptConsoleSource"}]</string>
+    </property>
+    <property name="script">
+     <string>for (var i = 0; i &lt; 1000; ++i) {
+    const value = inputs.source.convert(EpicsType.Double);
+    if (i % 3 === 0) console.log('converted', value);
+    else if (i % 3 === 1) console.warn('converted', value);
+    else console.error('converted', value);
+}</string>
+    </property>
+   </widget>
+   <widget class="caScript" name="endlessScript">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>1</width>
+      <height>1</height>
+     </rect>
+    </property>
+    <property name="triggerMode">
+     <enum>caScript::TriggerMode::Manual</enum>
+    </property>
+    <property name="executionMode">
+     <enum>caScript::ExecutionMode::DataDriven</enum>
+    </property>
+    <property name="channels">
+     <string>[{"alias": "source", "channel": "internal://scriptConsoleSource"}]</string>
+    </property>
+    <property name="script">
+     <string>while (true) {
+    const value = inputs.source.convert(EpicsType.String);
+    console.log('converted', value);
+}</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>caLineEdit</extends>
+   <header>caTextEntry</header>
+  </customwidget>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>caLineEdit</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>genSoftPV</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections>
+  <connection>
+   <sender>convert</sender>
+   <signal>clicked()</signal>
+   <receiver>convertScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>finite</sender>
+   <signal>clicked()</signal>
+   <receiver>finiteScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>endless</sender>
+   <signal>clicked()</signal>
+   <receiver>endlessScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>

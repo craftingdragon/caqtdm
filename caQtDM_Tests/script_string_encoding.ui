@@ -1,0 +1,106 @@
+<?xml version="1.0" ?>
+<ui version="4.0">
+ <class>StringEncodingTest</class>
+ <widget class="QMainWindow" name="StringEncodingTest">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>650</width>
+    <height>200</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>EPICS3 String-Kodierung</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <widget class="QLabel" name="label0">
+    <property name="geometry">
+     <rect>
+      <x>15</x>
+      <y>20</y>
+      <width>220</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>ASCII (EPICS3)</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="string0">
+    <property name="geometry">
+     <rect>
+      <x>240</x>
+      <y>20</y>
+      <width>390</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>epics3://IPAENC:TEST:MBBO.DESC</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label1">
+    <property name="geometry">
+     <rect>
+      <x>15</x>
+      <y>75</y>
+      <width>220</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>UTF-8 (EPICS3)</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="string1">
+    <property name="geometry">
+     <rect>
+      <x>240</x>
+      <y>75</y>
+      <width>390</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>epics3://IPAENC:TEST1:MBBO.DESC</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label2">
+    <property name="geometry">
+     <rect>
+      <x>15</x>
+      <y>130</y>
+      <width>220</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Latin-1 (EPICS3)</string>
+    </property>
+   </widget>
+   <widget class="caLineEdit" name="string2">
+    <property name="geometry">
+     <rect>
+      <x>240</x>
+      <y>130</y>
+      <width>390</width>
+      <height>35</height>
+     </rect>
+    </property>
+    <property name="channel">
+     <string>epics3://IPAENC:COM:2.DESC</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>calineedit.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

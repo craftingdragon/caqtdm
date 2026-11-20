@@ -1,0 +1,86 @@
+<ui version="4.0">
+  <class>FastCalcTest</class>
+  <widget class="QMainWindow" name="FastCalcTest">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>740</width>
+        <height>450</height>
+      </rect>
+    </property>
+    <property name="windowTitle">
+      <string>EPICS3 Cartesian fast calc</string>
+    </property>
+    <widget class="QWidget" name="centralwidget">
+      <widget class="caLineEdit" name="counter">
+        <property name="geometry">
+          <rect>
+            <x>20</x>
+            <y>10</y>
+            <width>200</width>
+            <height>35</height>
+          </rect>
+        </property>
+        <property name="channel">
+          <string>epics3://IPAFAST:counter</string>
+        </property>
+      </widget>
+      <widget class="caCartesianPlot" name="fastPlot">
+        <property name="geometry">
+          <rect>
+            <x>10</x>
+            <y>55</y>
+            <width>710</width>
+            <height>370</height>
+          </rect>
+        </property>
+        <property name="channels_1">
+          <string>;epics3://IPAFAST:wave</string>
+        </property>
+        <property name="Title">
+          <string>10 Hz calc via 32-value circular buffer</string>
+        </property>
+        <property name="XaxisScaling">
+          <enum>caCartesianPlot::axisScaling::Auto</enum>
+        </property>
+        <property name="YaxisScaling">
+          <enum>caCartesianPlot::axisScaling::Auto</enum>
+        </property>
+        <property name="Style_1">
+          <enum>caCartesianPlot::curvStyle::ThinLines</enum>
+        </property>
+        <property name="symbol_1">
+          <enum>caCartesianPlot::curvSymbol::Ellipse</enum>
+        </property>
+        <property name="TitleX">
+          <string>Sample index</string>
+        </property>
+        <property name="TitleY">
+          <string>Counter value</string>
+        </property>
+        <property name="color_1">
+          <color>
+            <red>0</red>
+            <green>80</green>
+            <blue>200</blue>
+          </color>
+        </property>
+      </widget>
+    </widget>
+  </widget>
+  <customwidgets>
+    <customwidget>
+      <class>caLineEdit</class>
+      <extends>QLineEdit</extends>
+      <header>calineedit.h</header>
+    </customwidget>
+    <customwidget>
+      <class>caCartesianPlot</class>
+      <extends>QWidget</extends>
+      <header>cacartesianplot.h</header>
+    </customwidget>
+  </customwidgets>
+  <resources />
+  <connections />
+</ui>

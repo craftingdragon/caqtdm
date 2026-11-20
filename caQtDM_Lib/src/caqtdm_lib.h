@@ -593,6 +593,7 @@ public slots:
     void DisplayContextMenu(QWidget* w);
     void Callback_TextEntryChanged(const QString &);
     void Callback_AlarmTreeWrite(const QString &pv, const QString &text, bool asString);
+    void Callback_ScriptOutputs(const QVariantMap &values);
     void Callback_AlarmTreeCalc(const QString &expr, const QVector<double> &inputs, double *result, bool *ok);
     void Callback_WaveEntryChanged(const QString &, int index);
     void processTerminated();
