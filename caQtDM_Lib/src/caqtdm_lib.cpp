@@ -6742,10 +6742,41 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             {
                 QMutexLocker lock(static_cast<QMutex *>(data.mutex));
                 const int count = data.edata.valueCount;
+                const bool singleWaveformValue = data.edata.dimCount == 0 && count == 1;
+                const bool epics3SingleValue = singleWaveformValue && qstrcmp(data.pluginName, "epics3") == 0;
                 if (data.edata.dimCount == 2 && data.edata.dim[0] == 1
                     && data.edata.dim[1] == 1 && count == 1 && !data.edata.dataB) {
                     values.append(data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
                         ? data.edata.rvalue : double(data.edata.ivalue));
+                    valid = true;
+                } else if (singleWaveformValue && (!data.edata.dataB
+                           || (epics3SingleValue && data.edata.dataSize > elementSize))) {
+                    // The current EPICS3 plugin leaves the waveform buffer untouched for single-element updates.
+                    values.append(data.edata.rvalue);
+                    if (epics3SingleValue) {
+                        switch (data.edata.fieldtype) {
+                        case caDOUBLE:
+                            bytes = QByteArray(reinterpret_cast<const char *>(&data.edata.rvalue), sizeof(double));
+                            break;
+                        case caFLOAT: {
+                            // Widening to double may have changed the original NaN payload.
+                            if (qIsNaN(data.edata.rvalue)) break;
+                            const float value = static_cast<float>(data.edata.rvalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        case caINT: {
+                            const int16_t value = static_cast<int16_t>(data.edata.ivalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        case caLONG: {
+                            const int32_t value = static_cast<int32_t>(data.edata.ivalue);
+                            bytes = QByteArray(reinterpret_cast<const char *>(&value), sizeof(value));
+                            break;
+                        }
+                        }
+                    }
                     valid = true;
                 } else if (count >= 0 && (count == 0 || (data.edata.dataB
                     && count <= data.edata.dataSize / elementSize))) {
