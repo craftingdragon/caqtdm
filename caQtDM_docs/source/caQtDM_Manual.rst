@@ -2801,6 +2801,14 @@ has no equivalent in MEDM
    context menu to configure the channel lists. Reload a running panel to apply
    changes to its channel bindings.
 
+   Double-click the widget in Qt Designer or choose *Edit JavaScript...* from
+   its context menu. The editor highlights JavaScript syntax and checks it after
+   a pause in typing. Use *Check Syntax* to check immediately. **OK** saves the
+   script when the syntax is valid, and **Cancel** discards edits. The editor
+   compiles the draft for the syntax check without running it and marks the line
+   when Qt reports its location. Runtime errors are reported when the panel
+   runs the script.
+
    **Properties**
 
    ``script``

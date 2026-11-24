@@ -74,6 +74,9 @@ private slots:
     void explicitScalarConversions();
     void conversionsPreserveInputSnapshot();
     void waveformSnapshotUsesJavaScriptArray();
+    void scriptEditorOpensFromPreferredTaskAction();
+    void scriptEditorChecksSyntaxLiveWithoutRunning();
+    void scriptEditorSavesOnlyTheTargetWidget();
     void channelDialogShowsConfigurationAndCancelPreservesIt_data();
     void channelDialogShowsConfigurationAndCancelPreservesIt();
     void channelDialogAddsAndRemovesRows_data();

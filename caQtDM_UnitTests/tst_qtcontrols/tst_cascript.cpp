@@ -26,9 +26,13 @@
 #include "tst_cascript.h"
 #include "cascript.h"
 #include "cascriptdialog.h"
+#include "cascripteditordialog.h"
+#include "cascripttaskmenu.h"
 #include "fakeformwindow.h"
 
+#include <QApplication>
 #include <QDialogButtonBox>
+#include <QPlainTextEdit>
 #include <QLabel>
 #include <QJsonDocument>
 #include <QFile>
@@ -583,6 +587,95 @@ void TestCaScript::waveformSnapshotUsesJavaScriptArray()
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
+}
+
+void TestCaScript::scriptEditorOpensFromPreferredTaskAction()
+{
+    caScript widget;
+    const QString original = QStringLiteral("// Grüezi\nreturn inputs.sample.value;\n");
+    widget.setScript(original);
+    CaScriptTaskMenu menu(&widget, &widget);
+    const auto actions = menu.taskActions();
+    QCOMPARE(actions.size(), 3);
+    QCOMPARE(menu.preferredEditAction(), actions.first());
+
+    bool opened = false;
+    QString initial;
+    QTimer::singleShot(0, &menu, [&]() {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!dialog) return;
+        if (auto *editor = dialog->findChild<QPlainTextEdit *>(QStringLiteral("scriptEditor"))) {
+            opened = true;
+            initial = editor->toPlainText();
+            editor->setPlainText(QStringLiteral("return 0;"));
+        }
+        dialog->reject();
+    });
+    actions.first()->trigger();
+    QVERIFY(opened);
+    QCOMPARE(initial, original);
+    QCOMPARE(widget.getScript(), original);
+}
+
+void TestCaScript::scriptEditorChecksSyntaxLiveWithoutRunning()
+{
+    FakeFormWindow form;
+    caScript widget(&form);
+    widget.setScript(QStringLiteral("const broken = ;"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    CaScriptEditorDialog dialog(&widget);
+    auto *editor = dialog.findChild<QPlainTextEdit *>(QStringLiteral("scriptEditor"));
+    auto *diagnostic = dialog.findChild<QLabel *>(QStringLiteral("scriptDiagnostic"));
+    auto *check = dialog.findChild<QPushButton *>(QStringLiteral("checkScriptSyntax"));
+    QVERIFY(editor);
+    QVERIFY(diagnostic);
+    QVERIFY(check);
+    QVERIFY(diagnostic->text().contains(QStringLiteral("SyntaxError")));
+    QVERIFY(editor->extraSelections().isEmpty());
+
+    editor->setPlainText(QStringLiteral("// First line\nlet inputs = 2;"));
+    QVERIFY(diagnostic->text().isEmpty());
+    QTRY_COMPARE(editor->extraSelections().size(), 1);
+    QCOMPARE(editor->extraSelections().first().cursor.blockNumber(), 1);
+    QVERIFY(diagnostic->text().contains(QStringLiteral("Line 2")));
+
+    editor->setPlainText(QStringLiteral("while (true) {}"));
+    QVERIFY(editor->extraSelections().isEmpty());
+    check->click();
+    QVERIFY(diagnostic->text().contains(QStringLiteral("syntax is valid")));
+    QCOMPARE(finished.count(), 0);
+    QCOMPARE(outputs.count(), 0);
+    QVERIFY(form.fakeCursor()->widgetProperties.isEmpty());
+}
+
+void TestCaScript::scriptEditorSavesOnlyTheTargetWidget()
+{
+    FakeFormWindow form;
+    caScript target(&form);
+    caScript other(&form);
+    other.setScript(QStringLiteral("return 99;"));
+    CaScriptEditorDialog dialog(&target);
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    auto *editor = dialog.findChild<QPlainTextEdit *>(QStringLiteral("scriptEditor"));
+    QVERIFY(editor);
+
+    editor->setPlainText(QStringLiteral("return ("));
+    dialog.accept();
+    QCOMPARE(accepted.count(), 0);
+    QVERIFY(form.fakeCursor()->widgetProperties.isEmpty());
+    const QString script = QStringLiteral(
+        "\toutputs.result.value = inputs.sample.value + inputs[\"internal://other\"].value;\n"
+        "\treturn 'Grüezi\u00a0🌍';\n\n");
+    editor->setPlainText(script);
+    dialog.accept();
+    QCOMPARE(accepted.count(), 1);
+    const auto *cursor = form.fakeCursor();
+    QCOMPARE(cursor->propertyWidget, static_cast<QWidget *>(&target));
+    QVERIFY(cursor->properties.isEmpty());
+    QCOMPARE(cursor->widgetProperties.size(), 1);
+    QCOMPARE(cursor->widgetProperties.value(QStringLiteral("script")).toString(), script);
+    QCOMPARE(other.getScript(), QStringLiteral("return 99;"));
 }
 
 void TestCaScript::channelDialogShowsConfigurationAndCancelPreservesIt_data()

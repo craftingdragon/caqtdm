@@ -48,7 +48,11 @@ public:
     int widgetCount() const override { return 0; }
     QWidget *widget(int) const override { return Q_NULLPTR; }
     QWidget *current() const override { return Q_NULLPTR; }
-    void setWidgetProperty(QWidget *, const QString &, const QVariant &) override {}
+    void setWidgetProperty(QWidget *widget, const QString &name, const QVariant &value) override
+    {
+        propertyWidget = widget;
+        widgetProperties[name] = value;
+    }
     void resetWidgetProperty(QWidget *, const QString &) override {}
     int position() const override { return 0; }
 
@@ -56,6 +60,8 @@ public:
     bool movePosition(MoveOperation, MoveMode) override { return false; }
 
     QMap<QString, QVariant> properties;
+    QWidget *propertyWidget = nullptr;
+    QMap<QString, QVariant> widgetProperties;
 };
 
 class FakeFormWindow : public QDesignerFormWindowInterface
