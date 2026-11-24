@@ -31,5 +31,7 @@ to move the center. For example, use 64× and enter `-0.743644` and
 
 **Ansicht zurücksetzen** restores the original center and 1× zoom. caScript
 computes each 256 × 192 frame and publishes it as an internal RGB Char
-waveform. caCamera holds the previous frame while a new one is calculated.
+waveform using a packed JavaScript `ArrayBuffer`. Palette changes reuse the
+calculated escape intensities. caCamera holds the previous frame while a new
+one is calculated.
 The panel requires no IOC.

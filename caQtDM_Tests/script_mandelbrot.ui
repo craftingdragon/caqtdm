@@ -404,7 +404,7 @@
          <enum>caScript::Periodic</enum>
         </property>
         <property name="triggerInterval">
-         <number>200</number>
+         <number>50</number>
         </property>
         <property name="channels">
          <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"width"},{"channel":"internal://mandelbrotHeight","alias":"height"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
@@ -420,74 +420,90 @@ const palette = inputs.palette.value;
 const zoom = inputs.zoom.value;
 const real = inputs.real.value;
 const imaginary = inputs.imaginary.value;
-const settings = [width, height, iterations, palette, zoom, real, imaginary].join(',');
-
-if (!this.frame || this.frame.settings !== settings) {
-    const stops = [
-        [[6, 15, 48], [15, 69, 140], [49, 176, 209], [246, 209, 115], [255, 251, 233]],
-        [[41, 0, 9], [134, 8, 16], [220, 42, 10], [250, 158, 31], [255, 250, 190]]
-    ];
-    const colors = [[0, 0, 0]];
-    for (let i = 1; i &lt;= 255; ++i) {
-        if (palette === 2) {
-            colors.push([i, i, i]);
-        } else {
-            const scale = (i - 1) * 4 / 254;
-            const segment = Math.min(3, Math.floor(scale));
-            const fraction = scale - segment;
-            const low = stops[palette][segment];
-            const high = stops[palette][segment + 1];
-            colors.push(low.map((value, channel) =&gt;
-                Math.round(value + fraction * (high[channel] - value))));
-        }
-    }
-    // The RGB1_CA decoder checks for another RGB triplet after the final row.
-    const pixels = new Array(width * height * 3 + 3);
-    pixels.fill(0, pixels.length - 3);
-    this.frame = { settings, colors, pixels, row: 0 };
-}
-
-const frame = this.frame;
-if (frame.row === height) return;
-
+const geometry = [width, height, iterations, zoom, real, imaginary].join(',');
 const step = 3.2 / (width * zoom);
 const colorScale = 225 / Math.log(iterations);
-const deadline = Date.now() + 30;
-do {
-    const y = frame.row++;
-    const ci = imaginary + (height / 2 - y) * step;
-    const ciSquared = ci * ci;
+const symmetric = imaginary === 0;
+// Row zero has no partner on this sampling grid.
+const rows = symmetric ? Math.floor(height / 2) + 1 : height;
+
+if (!this.frame || this.frame.geometry !== geometry) {
+    const realCoordinates = new Float64Array(width);
+    const cardioidOffsets = new Float64Array(width);
+    const cardioidSquares = new Float64Array(width);
+    const bulbSquares = new Float64Array(width);
     for (let x = 0; x &lt; width; ++x) {
         const cr = real + (x - width / 2) * step;
         const offset = cr - 0.25;
-        const q = offset * offset + ciSquared;
-        let intensity = 0;
-        // The main cardioid and period-2 bulb are inside the set.
-        if (q * (q + offset) &gt; 0.25 * ciSquared &amp;&amp;
-            (cr + 1) * (cr + 1) + ciSquared &gt; 0.0625) {
-            let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
-            while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
-                zi = 2 * zr * zi + ci;
-                zr = zrSquared - ziSquared + cr;
-                zrSquared = zr * zr;
-                ziSquared = zi * zi;
-                ++count;
-            }
-            if (count &lt; iterations) intensity = Math.round(30 + colorScale * Math.log(count));
-        }
-        const color = frame.colors[intensity];
-        const index = (y * width + x) * 3;
-        frame.pixels[index] = color[0];
-        frame.pixels[index + 1] = color[1];
-        frame.pixels[index + 2] = color[2];
+        realCoordinates[x] = cr;
+        cardioidOffsets[x] = offset;
+        cardioidSquares[x] = offset * offset;
+        bulbSquares[x] = (cr + 1) * (cr + 1);
     }
-} while (frame.row &lt; height &amp;&amp; Date.now() &lt; deadline);
+    this.frame = {
+        geometry, realCoordinates, cardioidOffsets, cardioidSquares, bulbSquares,
+        intensities: new Uint8Array(width * height), row: 0, publishedPalette: -1
+    };
+}
 
-if (frame.row === height) {
-    outputs.image.value = frame.pixels;
-    frame.pixels = null;
-    frame.colors = null;
-}</string>
+const frame = this.frame;
+if (frame.publishedPalette === palette) return;
+
+const deadline = Date.now() + 25;
+while (frame.row &lt; rows) {
+    const y = frame.row++;
+    const ci = imaginary + (height / 2 - y) * step;
+    const ciSquared = ci * ci;
+    const cardioidLimit = 0.25 * ciSquared;
+    const rowOffset = y * width;
+    for (let x = 0; x &lt; width; ++x) {
+        const q = frame.cardioidSquares[x] + ciSquared;
+        if (q * (q + frame.cardioidOffsets[x]) &lt;= cardioidLimit ||
+            frame.bulbSquares[x] + ciSquared &lt;= 0.0625) continue;
+        const cr = frame.realCoordinates[x];
+        let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
+        while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
+            zi = 2 * zr * zi + ci;
+            zr = zrSquared - ziSquared + cr;
+            zrSquared = zr * zr;
+            ziSquared = zi * zi;
+            ++count;
+        }
+        if (count &lt; iterations)
+            frame.intensities[rowOffset + x] = Math.round(30 + colorScale * Math.log(count));
+    }
+    if (symmetric &amp;&amp; y &gt; 0 &amp;&amp; height - y !== y)
+        frame.intensities.copyWithin((height - y) * width, rowOffset, rowOffset + width);
+    if (Date.now() &gt;= deadline) break;
+}
+if (frame.row &lt; rows) return;
+
+const stops = [
+    [[6, 15, 48], [15, 69, 140], [49, 176, 209], [246, 209, 115], [255, 251, 233]],
+    [[41, 0, 9], [134, 8, 16], [220, 42, 10], [250, 158, 31], [255, 250, 190]]
+];
+const colors = new Uint8Array(256 * 3);
+for (let i = 1; i &lt;= 255; ++i) {
+    const scale = (i - 1) * 4 / 254;
+    const segment = Math.min(3, Math.floor(scale));
+    const fraction = scale - segment;
+    for (let channel = 0; channel &lt; 3; ++channel) {
+        const low = palette === 2 ? i : stops[palette][segment][channel];
+        const high = palette === 2 ? i : stops[palette][segment + 1][channel];
+        colors[i * 3 + channel] = Math.round(low + fraction * (high - low));
+    }
+}
+
+// The RGB1_CA decoder checks for another RGB triplet after the final row.
+const pixels = new Uint8Array(width * height * 3 + 3);
+for (let i = 0, pixel = 0; i &lt; frame.intensities.length; ++i) {
+    const color = frame.intensities[i] * 3;
+    pixels[pixel++] = colors[color];
+    pixels[pixel++] = colors[color + 1];
+    pixels[pixel++] = colors[color + 2];
+}
+outputs.image.value = pixels.buffer;
+frame.publishedPalette = palette;</string>
         </property>
        </widget>
       </item>
