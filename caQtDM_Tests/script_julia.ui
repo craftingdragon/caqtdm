@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Julia-Menge</string>
+   <string>Julia-Menge · Zoomfahrt</string>
   </property>
   <layout class="QVBoxLayout" name="panelLayout" stretch="1,0,0,0">
    <item>
@@ -51,7 +51,7 @@
    <item>
     <widget class="QLabel" name="zoomHint">
      <property name="text">
-      <string>Ins Bild klicken, um den Zoom-Mittelpunkt zu setzen.</string>
+      <string>Ins Bild klicken, um ein neues Ziel für die Zoomfahrt zu wählen.</string>
      </property>
     </widget>
    </item>
@@ -144,7 +144,7 @@
        <item>
         <widget class="QLabel" name="zoomLabel">
          <property name="text">
-          <string>Zoom</string>
+          <string>Startzoom</string>
          </property>
         </widget>
        </item>
@@ -174,7 +174,7 @@
         <widget class="caCalc" name="zoomReadout">
          <property name="minimumSize">
           <size>
-           <width>80</width>
+           <width>110</width>
            <height>26</height>
           </size>
          </property>
@@ -182,10 +182,10 @@
           <string notr="true">internal://juliaZoomStep</string>
          </property>
          <property name="calc">
-          <string notr="true">NINT(2^(A/8))</string>
+          <string notr="true">2^(A/8)</string>
          </property>
          <property name="precision">
-          <number>0</number>
+          <number>2</number>
          </property>
          <property name="fontScaleMode">
           <enum>caCalc::None</enum>
@@ -206,12 +206,12 @@
        <item>
         <widget class="QLabel" name="realLabel">
          <property name="text">
-          <string>c-Mitte (Re)</string>
+          <string>c (Re)</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="caTextEntry" name="realCenter">
+        <widget class="caTextEntry" name="realParameter">
          <property name="minimumSize">
           <size>
            <width>0</width>
@@ -226,12 +226,12 @@
        <item>
         <widget class="QLabel" name="imaginaryLabel">
          <property name="text">
-          <string>c-Mitte (Im)</string>
+          <string>c (Im)</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="caTextEntry" name="imaginaryCenter">
+        <widget class="caTextEntry" name="imaginaryParameter">
          <property name="minimumSize">
           <size>
            <width>0</width>
@@ -246,38 +246,18 @@
       </layout>
      </item>
      <item>
-      <layout class="QHBoxLayout" name="parameterRow">
+      <layout class="QHBoxLayout" name="displayZoomRow">
        <item>
-        <widget class="QLabel" name="radiusLabel">
+        <widget class="QLabel" name="displayZoomLabel">
          <property name="text">
-          <string>Radius</string>
+          <string>Bildzoom</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="caTextEntry" name="radius">
+        <widget class="caLineEdit" name="displayZoomReadout">
          <property name="channel">
-          <string notr="true">internal://juliaRadius</string>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>0</width>
-           <height>26</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="parameterLabel">
-         <property name="text">
-          <string>Aktuelles c</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="caLineEdit" name="parameterReadout">
-         <property name="channel">
-          <string notr="true">internal://juliaParameter</string>
+          <string notr="true">internal://juliaDisplayedZoom</string>
          </property>
          <property name="fontScaleMode">
           <enum>caLineEdit::None</enum>
@@ -291,7 +271,7 @@
        <item>
         <widget class="caToggleButton" name="animationToggle">
          <property name="text">
-          <string>Animation</string>
+          <string>Automatischer Zoom</string>
          </property>
          <property name="fontScaleMode">
           <enum>caToggleButton::None</enum>
@@ -598,7 +578,7 @@
          <enum>genSoftPV::String</enum>
         </property>
         <property name="value">
-         <string notr="true">[0,128,0,-0.5251993,-0.5251993,0.04]</string>
+         <string notr="true">[0,128,0,-0.5251993,-0.5251993,0]</string>
         </property>
        </widget>
       </item>
@@ -608,7 +588,7 @@
          <enum>caScript::DataDriven</enum>
         </property>
         <property name="channels">
-         <string notr="true">[{"channel":"internal://juliaResolution.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"resolution"},{"channel":"internal://juliaIterations.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"iterations"},{"channel":"internal://juliaZoomStep.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"zoomStep"},{"channel":"internal://juliaReal.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"real"},{"channel":"internal://juliaImaginary.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"imaginary"},{"channel":"internal://juliaRadius.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"radius"}]</string>
+         <string notr="true">[{"channel":"internal://juliaResolution.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"resolution"},{"channel":"internal://juliaIterations.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"iterations"},{"channel":"internal://juliaZoomStep.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"zoomStep"},{"channel":"internal://juliaReal.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"real"},{"channel":"internal://juliaImaginary.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"imaginary"}]</string>
         </property>
         <property name="outputChannels">
          <string notr="true">[{"channel":"internal://juliaRenderRequest","alias":"request"}]</string>
@@ -619,8 +599,7 @@ const clamp = (value, low, high) =&gt; Math.max(low, Math.min(high, value));
 outputs.request.value = JSON.stringify([
     inputs.resolution.value, clamp(Math.round(inputs.iterations.value), 32, 1024),
     clamp(Math.round(inputs.zoomStep.value), 0, 160),
-    clamp(inputs.real.value, -2, 2), clamp(inputs.imaginary.value, -2, 2),
-    clamp(inputs.radius.value, 0, 0.25), this.request
+    clamp(inputs.real.value, -2, 2), clamp(inputs.imaginary.value, -2, 2), this.request
 ]);</string>
         </property>
        </widget>
@@ -640,31 +619,57 @@ outputs.request.value = JSON.stringify([
          <string notr="true">[{"channel":"internal://juliaWidth.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"cameraWidth"},{"channel":"internal://juliaHeight.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"cameraHeight"},{"channel":"internal://juliaImageClick.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"click"},{"channel":"internal://juliaRenderRequest.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"request"},{"channel":"internal://juliaAnimation.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"animation"},{"channel":"internal://juliaReset.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"reset"}]</string>
         </property>
         <property name="outputChannels">
-         <string notr="true">[{"channel":"internal://juliaWidth","alias":"cameraWidth"},{"channel":"internal://juliaHeight","alias":"cameraHeight"},{"channel":"internal://juliaPixels","alias":"image"},{"channel":"internal://juliaRenderProgress","alias":"progress"},{"channel":"internal://juliaParameter","alias":"parameter"}]</string>
+         <string notr="true">[{"channel":"internal://juliaWidth","alias":"cameraWidth"},{"channel":"internal://juliaHeight","alias":"cameraHeight"},{"channel":"internal://juliaPixels","alias":"image"},{"channel":"internal://juliaRenderProgress","alias":"progress"},{"channel":"internal://juliaDisplayedZoom","alias":"displayZoom"}]</string>
         </property>
         <property name="script">
-         <string notr="true">const request = inputs.request.value;
+         <string notr="true">// Use a preimage of the fixed point with the larger multiplier
+// as the default target for this c.
+function defaultTarget(cr, ci) {
+    function sqrtComplex(real, imaginary) {
+        const magnitude = Math.hypot(real, imaginary);
+        return [Math.sqrt((magnitude + real) / 2),
+                (imaginary &lt; 0 ? -1 : 1) * Math.sqrt((magnitude - real) / 2)];
+    }
+    const [rootReal, rootImaginary] = sqrtComplex(1 - 4 * cr, -4 * ci);
+    let real = -(1 + rootReal) / 2;
+    let imaginary = -rootImaginary / 2;
+    for (let i = 0; i &lt; 6; ++i) {
+        const [nextReal, nextImaginary] = sqrtComplex(real - cr, imaginary - ci);
+        real = -nextReal;
+        imaginary = -nextImaginary;
+    }
+    return [real, imaginary];
+}
+
+const request = inputs.request.value;
 if (request !== this.lastRequest) {
-    const [resolution, iterations, zoomStep, real, imaginary, radius] = JSON.parse(request);
-    this.settings = {resolution, iterations, zoom: Math.round(Math.pow(2, zoomStep / 8)),
-                     real, imaginary, radius};
+    const [resolution, iterations, startStep, cr, ci] = JSON.parse(request);
+    if (!this.settings || this.settings.cr !== cr || this.settings.ci !== ci)
+        [this.centerReal, this.centerImaginary] = defaultTarget(cr, ci);
+    const escapeRadius = Math.max(2, Math.hypot(cr, ci));
+    this.settings = {resolution, iterations, startStep, cr, ci, limit: escapeRadius * escapeRadius};
+    this.viewStep = startStep;
     this.lastRequest = request;
+    this.frame = null;
 }
 
 const settings = this.settings;
 const published = this.published;
 const reset = inputs.reset.value;
 const click = inputs.click.value;
-if (this.lastReset === undefined || reset !== this.lastReset) {
-    this.centerReal = 0;
-    this.centerImaginary = 0;
-    if (this.lastReset !== undefined) settings.zoom = 1;
+if (this.lastReset !== undefined &amp;&amp; reset !== this.lastReset) {
+    [this.centerReal, this.centerImaginary] = defaultTarget(settings.cr, settings.ci);
+    this.viewStep = settings.startStep = 0;
+    this.frame = null;
 } else if (click !== this.lastClick &amp;&amp; published) {
     const point = click.split(",");
     const x = Number(point[1]), y = Number(point[2]);
     if (point.length === 3 &amp;&amp; x &gt;= 0 &amp;&amp; x &lt;= 1 &amp;&amp; y &gt;= 0 &amp;&amp; y &lt;= 1) {
+        // A click belongs to the displayed frame, even while a deeper one is rendering.
         this.centerReal = published.real + (x - 0.5) * 3.2 / published.zoom;
         this.centerImaginary = published.imaginary + (0.5 - y) * 2.4 / published.zoom;
+        this.viewStep = published.zoomStep;
+        this.frame = null;
     }
 }
 this.lastReset = reset;
@@ -677,39 +682,35 @@ const reportProgress = (percent) =&gt; {
 };
 const width = settings.resolution === 1 ? 640 : 256;
 const height = width * 3 / 4;
-const zoom = settings.zoom;
 const real = this.centerReal, imaginary = this.centerImaginary;
 const iterations = settings.iterations;
-const key = [width, iterations, zoom, real, imaginary,
-             settings.real, settings.imaginary, settings.radius].join(",");
-const animate = inputs.animation.value !== 0 &amp;&amp; settings.radius &gt; 0;
+const key = [width, iterations, real, imaginary, settings.cr, settings.ci].join(",");
+const animate = inputs.animation.value !== 0;
 const now = Date.now();
 const deadline = now + 25;
-const phaseCount = 120;
-const phase = published ? published.phase : 0;
+const maxStep = 160;
 let frame = this.frame;
-if (frame &amp;&amp; (frame.key !== key || (!animate &amp;&amp; frame.phase !== phase))) {
-    this.frame = frame = null;
-}
+if (frame &amp;&amp; frame.automatic &amp;&amp; !animate) this.frame = frame = null;
 if (!frame) {
-    if (published &amp;&amp; published.key === key &amp;&amp; this.camera.width === width &amp;&amp;
-        (!animate || now - published.time &lt; 100)) {
-        reportProgress(100);
-        return;
+    let zoomStep = this.viewStep;
+    let automatic = false;
+    if (published &amp;&amp; published.key === key &amp;&amp; published.zoomStep === zoomStep &amp;&amp;
+        this.camera.width === width) {
+        if (!animate || settings.startStep === maxStep || now - published.time &lt; 100) {
+            reportProgress(100);
+            return;
+        }
+        zoomStep = zoomStep === maxStep ? settings.startStep : Math.min(maxStep, zoomStep + 2);
+        automatic = true;
     }
 
-    // Changes to the view or parameter settings keep the displayed phase.
-    const nextPhase = animate &amp;&amp; published &amp;&amp; published.key === key ? (phase + 1) % phaseCount : phase;
-    const angle = 2 * Math.PI * nextPhase / phaseCount;
-    const cr = settings.real + settings.radius * Math.cos(angle);
-    const ci = settings.imaginary + settings.radius * Math.sin(angle);
-    const escapeRadius = Math.max(2, Math.hypot(cr, ci));
+    // One quarter octave per completed frame. Slow frames never queue up.
+    const zoom = Math.pow(2, zoomStep / 8);
     const step = 3.2 / (width * zoom);
     const realCoordinates = new Float64Array(width);
     for (let x = 0; x &lt; width; ++x)
         realCoordinates[x] = real + (x + 0.5 - width / 2) * step;
-    frame = this.frame = {key, phase: nextPhase, cr, ci, limit: escapeRadius * escapeRadius,
-                          step, realCoordinates, row: 0, column: 0,
+    frame = this.frame = {automatic, zoomStep, zoom, step, realCoordinates, row: 0, column: 0,
                           // RGB1_CA expects space for an extra RGB triplet.
                           pixels: new Uint8Array(width * height * 3 + 3)};
     reportProgress(0);
@@ -757,8 +758,8 @@ while (frame.row &lt; height &amp;&amp; Date.now() &lt; deadline) {
     const end = Math.min(frame.column + 64, width);
     let index = (frame.row * width + frame.column) * 3;
     for (let x = frame.column; x &lt; end; ++x) {
-        const color = 3 * this.escapeCount(frame.realCoordinates[x], zi, frame.cr, frame.ci,
-                                          frame.limit, iterations);
+        const color = 3 * this.escapeCount(frame.realCoordinates[x], zi, settings.cr, settings.ci,
+                                          settings.limit, iterations);
         frame.pixels[index++] = colors[color];
         frame.pixels[index++] = colors[color + 1];
         frame.pixels[index++] = colors[color + 2];
@@ -795,10 +796,11 @@ if (finished &lt; camera.readyAfter || inputs.cameraWidth.value !== width ||
 }
 
 outputs.image.value = frame.pixels.buffer;
-outputs.parameter.value = frame.cr.toFixed(7) + (frame.ci &lt; 0 ? " - " : " + ") +
-                          Math.abs(frame.ci).toFixed(7) + "i";
+const zoom = frame.zoom;
+outputs.displayZoom.value = (zoom &lt; 10 ? zoom.toFixed(2) : Math.round(zoom)) + " x";
 reportProgress(100);
-this.published = {key, phase: frame.phase, zoom, real, imaginary, time: finished};
+this.viewStep = frame.zoomStep;
+this.published = {key, zoomStep: frame.zoomStep, zoom, real, imaginary, time: finished};
 this.frame = null;</string>
         </property>
        </widget>
@@ -812,28 +814,6 @@ this.frame = null;</string>
          <string notr="true">this.reset = (this.reset || 0) + 1;
 outputs.zoomStep.value = 0;
 outputs.reset.value = this.reset;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="genSoftPV" name="radiusDefinition">
-        <property name="variable">
-         <string notr="true">juliaRadius</string>
-        </property>
-        <property name="dataType">
-         <enum>genSoftPV::Double</enum>
-        </property>
-        <property name="value">
-         <string notr="true">0.04</string>
-        </property>
-        <property name="drvl">
-         <string notr="true">0</string>
-        </property>
-        <property name="drvh">
-         <string notr="true">0.25</string>
-        </property>
-        <property name="precision">
-         <number>4</number>
         </property>
        </widget>
       </item>
@@ -864,9 +844,9 @@ outputs.reset.value = this.reset;</string>
        </widget>
       </item>
       <item>
-       <widget class="genSoftPV" name="parameterDefinition">
+       <widget class="genSoftPV" name="displayZoomDefinition">
         <property name="variable">
-         <string notr="true">juliaParameter</string>
+         <string notr="true">juliaDisplayedZoom</string>
         </property>
         <property name="dataType">
          <enum>genSoftPV::String</enum>
