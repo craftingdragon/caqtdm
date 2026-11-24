@@ -68,6 +68,8 @@ public:
     knobData *GetMutexKnobDataPtr(int indx);
     void SetMutexKnobData(int indx, knobData data);
     int GetMutexKnobDataIndex();
+    bool getInternalScalarTarget(QWidget *widget, const QString &pv, knobData &target);
+    static QString internalPvKey(QString pv);
     int GetMutexKnobDataSize();
     void SetMutexKnobDataReceived(knobData *kData);
     knobData *getMutexKnobDataPV(QWidget *widget, QString pv);

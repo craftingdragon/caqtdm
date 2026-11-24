@@ -3603,6 +3603,11 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
             return;
         }
 
+        QList<caScript::InputChannel> outputs = scriptWidget->getOutputChannels();
+        for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
+        scriptWidget->setOutputChannels(outputs);
+        scriptWidget->freezeChannelBindings();
+
         const QList<caScript::InputChannel> inputs = scriptWidget->getInputChannels();
         for (int i = 0; i < inputs.size(); ++i) {
             specData[0] = i;
@@ -3614,9 +3619,6 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         integerList.insert(0, nbMonitors);
         scriptWidget->setProperty("MonitorList", integerList);
 
-        QList<caScript::InputChannel> outputs = scriptWidget->getOutputChannels();
-        for (caScript::InputChannel &output : outputs) reaffectText(map, &output.channel, w1);
-        scriptWidget->setOutputChannels(outputs);
         connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
         connect(scriptWidget, &caScript::scriptInfo, this, [this, scriptWidget](const QString &info) {
             QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), info).toLocal8Bit();
@@ -7553,7 +7555,7 @@ void CaQtDM_Lib::Callback_TextEntryChanged(const QString& text)
 void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
 {
     caScript *widget = qobject_cast<caScript *>(sender());
-    if (!widget) return;
+    if (!widget || !AllowsUpdate) return;
     const auto warn = [this, widget](const QString &channel, const QString &reason) {
         QByteArray message = tr("caScript %1: output %2 ignored: %3")
             .arg(widget->objectName(), channel, reason).toLocal8Bit();
@@ -7561,13 +7563,16 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
     };
     const auto targetName = [](QString channel) {
         channel = channel.trimmed();
-        if (channel.endsWith(QStringLiteral(".VAL"))) channel.chop(4);
+        const QString prefix = QStringLiteral("internal://");
+        if (channel.startsWith(prefix))
+            return prefix + MutexKnobData::internalPvKey(channel.mid(prefix.size()));
         return channel;
     };
     QMap<QString, int> counts;
     const auto outputs = widget->getOutputChannels();
     for (const auto &output : outputs) ++counts[targetName(output.channel)];
     for (const auto &output : outputs) {
+        if (!AllowsUpdate) return;
         const QString key = output.alias.isEmpty() ? output.channel : output.alias;
         if (!values.contains(key)) continue;
         const QString channel = targetName(output.channel);
@@ -7580,12 +7585,11 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
             continue;
         }
         const QString pv = channel.mid(11);
-        knobData *existing = mutexKnobDataP->getMutexKnobDataPV(widget, pv);
-        if (!existing || QString::fromLatin1(existing->pluginName) != QStringLiteral("internal")) {
+        knobData target;
+        if (!mutexKnobDataP->getInternalScalarTarget(widget, pv, target)) {
             warn(channel, tr("target is not defined"));
             continue;
         }
-        knobData target = mutexKnobDataP->GetMutexKnobData(existing->index);
         if (!target.edata.connected || !target.edata.accessW || target.edata.nelm != 1
             || target.edata.dimCount != 0) {
             warn(channel, tr("target must be a connected writable scalar"));
@@ -8689,6 +8693,7 @@ void CaQtDM_Lib::resizeFullWindow(QRect& q)
 void CaQtDM_Lib::closeEvent(QCloseEvent* ce)
 {
     Q_UNUSED(ce);
+    AllowsUpdate = false;
     emit Signal_Closing();
 
     QString thisFileName =  property("fileString").toString().section('/',-1);
@@ -8699,8 +8704,6 @@ void CaQtDM_Lib::closeEvent(QCloseEvent* ce)
     }
 
     killTimer(loopTimerID);
-
-    AllowsUpdate = false;
 
     for(int i=0; i < mutexKnobDataP->GetMutexKnobDataSize(); i++) {
 

@@ -101,6 +101,8 @@ public:
     void setOutputChannels(const QList<InputChannel> &outputs);
     QStringList outputConfigurationErrors() const;
 
+    void freezeChannelBindings();
+
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
 public slots:
@@ -127,11 +129,13 @@ private:
     QString m_lastOutputText;
     void handleInputTrigger(int index);
     void refreshTriggers();
+    bool channelBindingsEditable();
 
     TriggerMode m_triggerMode = Manual;
     QString m_triggerInput;
     int m_triggerInterval = 100;
     bool m_triggersStarted = false;
+    bool m_channelBindingsFrozen = false;
     QTimer *m_triggerTimer;
     QTimer *m_warningTimer;
     QTimer *m_timeoutTimer;

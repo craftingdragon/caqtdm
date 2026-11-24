@@ -578,6 +578,7 @@ QString caScript::getChannels() const
 
 void caScript::setChannels(const QString &json)
 {
+    if (!channelBindingsEditable()) return;
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError) {
@@ -613,6 +614,7 @@ QList<caScript::InputChannel> caScript::getInputChannels() const
 
 void caScript::setInputChannels(const QList<InputChannel> &inputs)
 {
+    if (!channelBindingsEditable()) return;
     m_inputChannels = inputs;
     m_inputValues.clear();
     m_readyInputs.clear();
@@ -645,6 +647,7 @@ QString caScript::getOutputChannelsJson() const
 
 void caScript::setOutputChannelsJson(const QString &json)
 {
+    if (!channelBindingsEditable()) return;
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &error);
     if (error.error != QJsonParseError::NoError || !document.isArray()) {
@@ -672,6 +675,7 @@ QList<caScript::InputChannel> caScript::getOutputChannels() const
 
 void caScript::setOutputChannels(const QList<InputChannel> &outputs)
 {
+    if (!channelBindingsEditable()) return;
     m_outputChannels = outputs;
     m_outputJsonError.clear();
 }
@@ -682,6 +686,18 @@ QStringList caScript::outputConfigurationErrors() const
     for (QString &error : errors) error.prepend(tr("Output: "));
     if (!m_outputJsonError.isEmpty()) errors.prepend(m_outputJsonError);
     return errors;
+}
+
+void caScript::freezeChannelBindings()
+{
+    m_channelBindingsFrozen = true;
+}
+
+bool caScript::channelBindingsEditable()
+{
+    if (!m_channelBindingsFrozen) return true;
+    emit scriptWarning(tr("Channel bindings are fixed for this panel. Reload it to apply changes."));
+    return false;
 }
 
 #include "cascript.moc"

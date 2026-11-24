@@ -518,6 +518,43 @@ knobData* MutexKnobData::getMutexKnobDataPV(QWidget *widget, QString pv)
     return (knobData*) Q_NULLPTR;
 }
 
+QString MutexKnobData::internalPvKey(QString pv)
+{
+    pv = pv.trimmed();
+    const int dot = pv.indexOf('.');
+    if (dot > 0) {
+        const QString field = pv.mid(dot + 1).toUpper();
+        pv.truncate(dot);
+        if (field != QStringLiteral("VAL")) pv += QLatin1Char('.') + field;
+    }
+    return pv;
+}
+
+bool MutexKnobData::getInternalScalarTarget(QWidget *widget, const QString &pv, knobData &target)
+{
+    QMutexLocker locker(&mutex);
+    const knobData *fallback = nullptr;
+    for (int i = 0; i < KnobDataArraySize; ++i) {
+        const knobData &record = KnobData[i];
+        if (record.index == -1 || qstrcmp(record.pluginName, "internal") != 0
+            || internalPvKey(QString::fromLatin1(record.pv)) != pv) continue;
+        // Prefer a usable widget-local monitor. Other panels may define the target.
+        if (!fallback) fallback = &record;
+        if (!record.edata.connected || !record.edata.accessW || record.edata.nelm != 1
+            || record.edata.dimCount != 0) continue;
+        if (record.dispW == widget) {
+            target = record;
+            return true;
+        }
+        fallback = &record;
+    }
+    if (!fallback) return false;
+    target = *fallback;
+    return true;
+}
+
+//*********************************************************************************************************************
+
 //*********************************************************************************************************************
 
 /**
