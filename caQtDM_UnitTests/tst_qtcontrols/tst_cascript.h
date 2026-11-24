@@ -54,7 +54,7 @@ private slots:
     void deadlineSurvivesGuiStall();
     void consoleMessagesPreserveLevelsAndSuccess();
     void consoleFloodIsBoundedAndStillTimesOut();
-    void debugDisplayCanBeToggledWithoutLosingLastOutput();
+    void debugDisplayModesRetainOutputAndDiagnostics();
     void scriptDiagnostics_data();
     void scriptDiagnostics();
     void closingBusyWidgetLeavesOtherWidgetResponsive();

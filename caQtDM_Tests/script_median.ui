@@ -188,8 +188,8 @@
       <height>48</height>
      </rect>
     </property>
-    <property name="show">
-     <bool>true</bool>
+    <property name="displayMode">
+     <enum>caScript::LastOutput</enum>
     </property>
     <property name="executionMode">
      <enum>caScript::DataDriven</enum>

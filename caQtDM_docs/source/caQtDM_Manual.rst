@@ -2861,9 +2861,17 @@ has no equivalent in MEDM
         When using ``SelectedInput``, a new update to the selected input is
         required if it triggered before the other inputs were ready.
 
-   ``show``
-      Boolean that displays the most recent accepted output write on the
-      widget. The default is ``false``.
+   ``displayMode``
+      Enum that selects what the widget displays in the viewer.
+
+      - ``Hidden`` draws no debug content. This is the default.
+      - ``LastOutput`` shows the most recent successful output write.
+        Waveform writes show the sample count.
+      - ``Status`` shows whether the script is idle, waiting for inputs, running,
+        succeeded, failed, timed out, or disabled. Success describes JavaScript
+        execution. A write can still be rejected afterward.
+      - ``Diagnostics`` shows the latest info, warning, or error, including
+        rejected output writes.
 
    **JavaScript bindings**
 

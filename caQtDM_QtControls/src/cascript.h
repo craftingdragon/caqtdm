@@ -44,7 +44,7 @@ class QTCON_EXPORT caScript : public QWidget
 {
     Q_OBJECT
 
-    Q_PROPERTY(bool show READ getShow WRITE setShow DESIGNABLE true)
+    Q_PROPERTY(DisplayMode displayMode READ getDisplayMode WRITE setDisplayMode)
     Q_PROPERTY(TriggerMode triggerMode READ getTriggerMode WRITE setTriggerMode DESIGNABLE true)
     Q_PROPERTY(QString triggerInput READ getTriggerInput WRITE setTriggerInput DESIGNABLE true)
     Q_PROPERTY(int triggerInterval READ getTriggerInterval WRITE setTriggerInterval DESIGNABLE true)
@@ -54,6 +54,9 @@ class QTCON_EXPORT caScript : public QWidget
     Q_PROPERTY(QString outputChannels READ getOutputChannelsJson WRITE setOutputChannelsJson)
 
 public:
+    enum DisplayMode { Hidden, LastOutput, Status, Diagnostics };
+    Q_ENUM(DisplayMode)
+
     enum TriggerMode { Manual, AnyInput, SelectedInput, MinimumInterval, Periodic };
     Q_ENUM(TriggerMode)
 
@@ -72,9 +75,12 @@ public:
     explicit caScript(QWidget *parent = nullptr);
     ~caScript() override;
 
-    bool getShow() const;
-    void setShow(bool show);
+    DisplayMode getDisplayMode() const;
+    void setDisplayMode(DisplayMode mode);
+    QString getDisplayText() const;
     QString getLastOutputText() const;
+    void reportDiagnostic(QtMsgType level, const QString &message);
+    void reportConfigurationErrors(const QStringList &errors);
 
     TriggerMode getTriggerMode() const;
     void setTriggerMode(TriggerMode mode);
@@ -127,8 +133,11 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
-    bool m_show = false;
+    DisplayMode m_displayMode = Hidden;
     QString m_lastOutputText;
+    QString m_statusText = tr("Idle");
+    QString m_diagnosticText;
+    void setStatusText(const QString &text);
     void handleInputTrigger(int index);
     void refreshTriggers();
     bool channelBindingsEditable();

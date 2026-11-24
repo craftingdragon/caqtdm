@@ -291,6 +291,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     layout->addWidget(scriptWidget);
     const QString script = QStringLiteral("// Grüezi <>&\noutputs.result.value = inputs.score.value;\n");
     scriptWidget->setScript(script);
+    scriptWidget->setDisplayMode(caScript::Diagnostics);
     scriptWidget->setExecutionMode(caScript::DataDriven);
     scriptWidget->setTriggerMode(caScript::SelectedInput);
     scriptWidget->setTriggerInput(QStringLiteral("score"));
@@ -320,6 +321,7 @@ void TestCaScript::scriptAndInputsSurviveUiFileRoundTrip()
     caScript *restored = restoredPanel->findChild<caScript *>(QStringLiteral("scriptWidget"));
     QVERIFY(restored != nullptr);
     QCOMPARE(restored->getScript(), script);
+    QCOMPARE(restored->getDisplayMode(), caScript::Diagnostics);
     QCOMPARE(restored->getExecutionMode(), caScript::DataDriven);
     QCOMPARE(restored->getTriggerMode(), caScript::SelectedInput);
     QCOMPARE(restored->getTriggerInput(), QStringLiteral("score"));
@@ -961,6 +963,7 @@ void TestCaScript::inputConfigurationSurvivesJsonRoundTrip()
 void TestCaScript::executionModesRespectConnectionFreshness()
 {
     caScript widget;
+    widget.setDisplayMode(caScript::Status);
     QVERIFY(widget.setProperty("executionMode", caScript::DataDriven));
     const QMetaProperty property = widget.metaObject()->property(widget.metaObject()->indexOfProperty("executionMode"));
     QVERIFY(property.isEnumType());
@@ -969,6 +972,7 @@ void TestCaScript::executionModesRespectConnectionFreshness()
     QSignalSpy finished(&widget, &caScript::scriptFinished);
     widget.executeScript();
     QVERIFY(finished.isEmpty());
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("Waiting for inputs"));
     const QVariantMap connected = {{"connected", true}};
     widget.updateInputMetadata(0, connected);
     widget.updateInputValue(0, 1);
@@ -977,8 +981,10 @@ void TestCaScript::executionModesRespectConnectionFreshness()
     QVERIFY(finished.isEmpty());
     widget.updateInputValue(1, 2);
     widget.executeScript();
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("Running"));
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.last().first().toBool());
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("Succeeded"));
     widget.updateInputValue(0, 1);
     widget.executeScript();
     QTRY_COMPARE(finished.count(), 2);
@@ -1127,6 +1133,7 @@ void TestCaScript::busyMonitorTriggersAreWarnedAndNotQueued()
 void TestCaScript::timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns()
 {
     caScript widget;
+    widget.setDisplayMode(caScript::Status);
     widget.setOutputChannels({{"target", "result"}});
     const QString endless = QStringLiteral("outputs.result.value = 42; while (true) {}");
     widget.setScript(endless);
@@ -1140,6 +1147,7 @@ void TestCaScript::timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns()
         QTRY_COMPARE_WITH_TIMEOUT(finished.count(), i, 2500);
         QVERIFY(!finished.last().first().toBool());
         QVERIFY(outputs.isEmpty());
+        QCOMPARE(widget.getDisplayText(), QStringLiteral("Timed out"));
     }
     widget.setScript("outputs.result.value = 7;");
     widget.executeScript();
@@ -1158,6 +1166,7 @@ void TestCaScript::timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns()
     QVERIFY(errors.isValid());
     QCOMPARE(errors.count(), 10); // Nine timeouts and a distinct disabled message.
     QVERIFY(errors.last().first().toString().contains("5 consecutive timeouts"));
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("Disabled"));
     widget.setScript("outputs.result.value = 99;");
     widget.executeScript();
     QTest::qWait(60);
@@ -1329,16 +1338,32 @@ void TestCaScript::scriptDiagnostics()
     if (lineTwo) QVERIFY2(message.contains("line 2"), qPrintable(message));
 }
 
-void TestCaScript::debugDisplayCanBeToggledWithoutLosingLastOutput()
+void TestCaScript::debugDisplayModesRetainOutputAndDiagnostics()
 {
     caScript widget;
-    QVERIFY(!widget.getShow());
-    QVERIFY(widget.getLastOutputText().isEmpty());
-    QVERIFY(widget.setProperty("show", true));
-    QVERIFY(QMetaObject::invokeMethod(&widget, "updateLastOutput", Qt::DirectConnection,
-                                     Q_ARG(QString, QString("internal://result")), Q_ARG(QVariant, QVariant(42))));
-    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
-    QVERIFY(widget.setProperty("show", false));
-    QVERIFY(widget.setProperty("show", true));
-    QCOMPARE(widget.getLastOutputText(), QString("internal://result = 42"));
+    QCOMPARE(widget.getDisplayMode(), caScript::Hidden);
+    QVERIFY(widget.getDisplayText().isEmpty());
+    const int index = widget.metaObject()->indexOfProperty("displayMode");
+    QVERIFY(index >= 0);
+    const QMetaProperty property = widget.metaObject()->property(index);
+    QVERIFY(property.isEnumType());
+    QVERIFY(property.isDesignable());
+    QCOMPARE(property.enumerator().keyCount(), 4);
+    widget.updateLastOutput(QStringLiteral("internal://result"), 42);
+
+    QVERIFY(widget.setProperty("displayMode", caScript::Diagnostics));
+    QVERIFY(widget.getDisplayText().isEmpty());
+    widget.setScript(QStringLiteral("throw new Error('test failure');"));
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    const QString diagnostic = widget.getDisplayText();
+    QVERIFY(diagnostic.startsWith(QStringLiteral("Error: ")));
+    QVERIFY(diagnostic.contains(QStringLiteral("test failure")));
+    widget.setDisplayMode(caScript::Status);
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("Failed"));
+    widget.setDisplayMode(caScript::LastOutput);
+    QCOMPARE(widget.getDisplayText(), QStringLiteral("internal://result = 42"));
+    widget.setDisplayMode(caScript::Diagnostics);
+    QCOMPARE(widget.getDisplayText(), diagnostic);
 }

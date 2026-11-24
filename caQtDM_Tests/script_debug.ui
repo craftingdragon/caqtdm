@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaScriptDebug</class>
+ <widget class="QWidget" name="CaScriptDebug">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>740</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>caScript Debug Display</string>
+  </property>
+  <layout class="QVBoxLayout" name="pageLayout">
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="title">
+     <property name="font">
+      <font>
+       <pointsize>16</pointsize>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="text">
+      <string>caScript Debug Display</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="instructions">
+     <property name="text">
+      <string>Choose a scenario or click Run Again to compare the four display modes.</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="controls" stretch="1,0">
+     <item>
+      <widget class="caChoice" name="scenario">
+       <property name="channel">
+        <string notr="true">internal://caScriptDebugScenario</string>
+       </property>
+       <property name="stackingMode">
+        <enum>caChoice::Column</enum>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>36</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="runAgain">
+       <property name="text">
+        <string>Run Again</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>92</width>
+         <height>36</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QGridLayout" name="displayModes">
+     <property name="spacing">
+      <number>12</number>
+     </property>
+     <item row="0" column="0">
+      <widget class="QGroupBox" name="hiddenScriptGroup">
+       <property name="title">
+        <string>Hidden</string>
+       </property>
+       <layout class="QVBoxLayout" name="hiddenScriptLayout">
+        <item>
+         <widget class="caScript" name="hiddenScript">
+          <property name="minimumSize">
+           <size>
+            <width>225</width>
+            <height>88</height>
+           </size>
+          </property>
+          <property name="displayMode">
+           <enum>caScript::Hidden</enum>
+          </property>
+          <property name="executionMode">
+           <enum>caScript::DataDriven</enum>
+          </property>
+          <property name="triggerMode">
+           <enum>caScript::AnyInput</enum>
+          </property>
+          <property name="script">
+           <string notr="true">const scenario = inputs.scenario.value;
+if (scenario === 2) {
+    throw new Error("Example JavaScript error");
+}
+if (scenario === 4) {
+    // Demonstrate the caScript execution deadline.
+    while (true) {}
+}</string>
+          </property>
+          <property name="channels">
+           <string notr="true">[{"channel": "internal://caScriptDebugScenario", "alias": "scenario"}]</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QGroupBox" name="outputScriptGroup">
+       <property name="title">
+        <string>LastOutput</string>
+       </property>
+       <layout class="QVBoxLayout" name="outputScriptLayout">
+        <item>
+         <widget class="caScript" name="outputScript">
+          <property name="minimumSize">
+           <size>
+            <width>225</width>
+            <height>88</height>
+           </size>
+          </property>
+          <property name="displayMode">
+           <enum>caScript::LastOutput</enum>
+          </property>
+          <property name="executionMode">
+           <enum>caScript::DataDriven</enum>
+          </property>
+          <property name="triggerMode">
+           <enum>caScript::AnyInput</enum>
+          </property>
+          <property name="script">
+           <string notr="true">const scenario = inputs.scenario.value;
+if (scenario === 2) {
+    throw new Error("Example JavaScript error");
+}
+if (scenario === 4) {
+    // Demonstrate the caScript execution deadline.
+    while (true) {}
+}
+if (scenario === 0 || scenario === 1) {
+    outputs.result.value = scenario === 0 ? 42 : 84;
+}</string>
+          </property>
+          <property name="channels">
+           <string notr="true">[{"channel": "internal://caScriptDebugScenario", "alias": "scenario"}]</string>
+          </property>
+          <property name="outputChannels">
+           <string notr="true">[{"channel": "internal://caScriptDebugResult", "alias": "result"}]</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QGroupBox" name="statusScriptGroup">
+       <property name="title">
+        <string>Status</string>
+       </property>
+       <layout class="QVBoxLayout" name="statusScriptLayout">
+        <item>
+         <widget class="caScript" name="statusScript">
+          <property name="minimumSize">
+           <size>
+            <width>225</width>
+            <height>88</height>
+           </size>
+          </property>
+          <property name="displayMode">
+           <enum>caScript::Status</enum>
+          </property>
+          <property name="executionMode">
+           <enum>caScript::DataDriven</enum>
+          </property>
+          <property name="triggerMode">
+           <enum>caScript::AnyInput</enum>
+          </property>
+          <property name="script">
+           <string notr="true">const scenario = inputs.scenario.value;
+if (scenario === 2) {
+    throw new Error("Example JavaScript error");
+}
+if (scenario === 4) {
+    // Demonstrate the caScript execution deadline.
+    while (true) {}
+}</string>
+          </property>
+          <property name="channels">
+           <string notr="true">[{"channel": "internal://caScriptDebugScenario", "alias": "scenario"}]</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QGroupBox" name="diagnosticsScriptGroup">
+       <property name="title">
+        <string>Diagnostics</string>
+       </property>
+       <layout class="QVBoxLayout" name="diagnosticsScriptLayout">
+        <item>
+         <widget class="caScript" name="diagnosticsScript">
+          <property name="minimumSize">
+           <size>
+            <width>225</width>
+            <height>88</height>
+           </size>
+          </property>
+          <property name="displayMode">
+           <enum>caScript::Diagnostics</enum>
+          </property>
+          <property name="executionMode">
+           <enum>caScript::DataDriven</enum>
+          </property>
+          <property name="triggerMode">
+           <enum>caScript::AnyInput</enum>
+          </property>
+          <property name="script">
+           <string notr="true">const scenario = inputs.scenario.value;
+if (scenario === 2) {
+    throw new Error("Example JavaScript error");
+}
+if (scenario === 4) {
+    // Demonstrate the caScript execution deadline.
+    while (true) {}
+}
+if (scenario === 0) {
+    console.log("Example info message from a successful run.");
+} else if (scenario === 1) {
+    console.warn("Example warning. The script still completed.");
+} else if (scenario === 3) {
+    outputs.result.value = "not a number";
+}</string>
+          </property>
+          <property name="channels">
+           <string notr="true">[{"channel": "internal://caScriptDebugScenario", "alias": "scenario"}]</string>
+          </property>
+          <property name="outputChannels">
+           <string notr="true">[{"channel": "internal://caScriptDebugResult", "alias": "result"}]</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+  <widget class="genSoftPV" name="scenarioDefinition">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>0</width>
+     <height>0</height>
+    </rect>
+   </property>
+   <property name="variable">
+    <string notr="true">caScriptDebugScenario</string>
+   </property>
+   <property name="dataType">
+    <enum>genSoftPV::Enum</enum>
+   </property>
+   <property name="value">
+    <string notr="true">0</string>
+   </property>
+   <property name="enumStrings">
+    <stringlist>
+     <string>Success</string>
+     <string>Warning</string>
+     <string>Script Error</string>
+     <string>Rejected Write</string>
+     <string>Timeout</string>
+    </stringlist>
+   </property>
+  </widget>
+  <widget class="genSoftPV" name="resultDefinition">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>0</width>
+     <height>0</height>
+    </rect>
+   </property>
+   <property name="variable">
+    <string notr="true">caScriptDebugResult</string>
+   </property>
+   <property name="dataType">
+    <enum>genSoftPV::Double</enum>
+   </property>
+   <property name="value">
+    <string notr="true">0</string>
+   </property>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caChoice</class>
+   <extends>QWidget</extends>
+   <header>cachoice.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QLabel</extends>
+   <header>gensoftpv.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections>
+  <connection>
+   <sender>runAgain</sender>
+   <signal>clicked()</signal>
+   <receiver>hiddenScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>runAgain</sender>
+   <signal>clicked()</signal>
+   <receiver>outputScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>runAgain</sender>
+   <signal>clicked()</signal>
+   <receiver>statusScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+  <connection>
+   <sender>runAgain</sender>
+   <signal>clicked()</signal>
+   <receiver>diagnosticsScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>

@@ -425,8 +425,13 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     script.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
-    if (warning) QVERIFY(script.getLastOutputText().isEmpty());
-    else QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptOutputTarget = ") + expected.toString());
+    if (warning) {
+        script.setDisplayMode(caScript::Diagnostics);
+        QVERIFY(script.getDisplayText().startsWith(QStringLiteral("Warning: output internal://scriptOutputTarget ignored: ")));
+        QVERIFY(script.getLastOutputText().isEmpty());
+    } else {
+        QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptOutputTarget = ") + expected.toString());
+    }
     QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
     QCOMPARE(data->edata.fieldtype, originalType);
     if (type == genSoftPV::String) {

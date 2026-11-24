@@ -144,8 +144,8 @@ Disabling clears the requested turn; IOC movement may continue.</string>
      <height>45</height>
     </rect>
    </property>
-   <property name="show">
-    <bool>true</bool>
+   <property name="displayMode">
+    <enum>caScript::LastOutput</enum>
    </property>
    <property name="triggerMode">
     <enum>caScript::TriggerMode::Periodic</enum>

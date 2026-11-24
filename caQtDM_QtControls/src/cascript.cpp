@@ -474,7 +474,7 @@ caScript::caScript(QWidget *parent) : QWidget(parent), m_triggerTimer(new QTimer
     connect(m_warningTimer, &QTimer::timeout, this, [this]() {
         if (m_worker->executionIsSlow()) {
             m_slowWarningEmitted = true;
-            emit scriptWarning(tr("Script execution exceeded 100 ms."));
+            reportDiagnostic(QtWarningMsg, tr("Script execution exceeded 100 ms."));
         }
     });
 }
@@ -494,7 +494,7 @@ void caScript::executeScript()
 {
     if (m_executionDisabled) return;
     if (m_running) {
-        emit scriptWarning(tr("Trigger ignored: script is already running."));
+        reportDiagnostic(QtWarningMsg, tr("Trigger ignored: script is already running."));
         return;
     }
     const QStringList errors = inputConfigurationErrors() + outputConfigurationErrors()
@@ -502,7 +502,7 @@ void caScript::executeScript()
     if (!errors.isEmpty()) {
         m_running = true;
         QTimer::singleShot(0, this, [this, errors]() {
-            for (const QString &error : errors) emit scriptError(error);
+            reportConfigurationErrors(errors);
             m_running = false;
             emit scriptFinished(false);
         });
@@ -511,10 +511,14 @@ void caScript::executeScript()
 
     if (m_executionMode == DataDriven) {
         for (int i = 0; i < m_inputChannels.size(); ++i) {
-            if (!m_readyInputs.contains(i)) return;
+            if (!m_readyInputs.contains(i)) {
+                setStatusText(tr("Waiting for inputs"));
+                return;
+            }
         }
     }
     m_running = true;
+    setStatusText(tr("Running"));
 
     if (!m_executionThread) {
         m_executionThread = new QThread(this);
@@ -522,25 +526,27 @@ void caScript::executeScript()
         m_worker->moveToThread(m_executionThread);
         connect(m_executionThread, &QThread::finished, m_worker, &QObject::deleteLater);
         connect(m_worker, &CaScriptWorker::message, this, [this](int level, const QString &text) {
-            if (level == QtWarningMsg) emit scriptWarning(text);
-            else if (level == QtCriticalMsg) emit scriptError(text);
-            else emit scriptInfo(text);
+            reportDiagnostic(static_cast<QtMsgType>(level), text);
         });
         connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values,
                                                               const QString &diagnostic,
                                                               bool timedOut, bool slow) {
             m_warningTimer->stop();
-            if (slow && !m_slowWarningEmitted) emit scriptWarning(tr("Script execution exceeded 100 ms."));
+            if (slow && !m_slowWarningEmitted)
+                reportDiagnostic(QtWarningMsg, tr("Script execution exceeded 100 ms."));
             if (timedOut) {
-                emit scriptError(tr("Script execution interrupted after the 1000 ms time limit."));
+                setStatusText(tr("Timed out"));
+                reportDiagnostic(QtCriticalMsg, tr("Script execution interrupted after the 1000 ms time limit."));
                 if (++m_consecutiveTimeouts >= 5) {
                     m_executionDisabled = true;
                     m_triggerTimer->stop();
-                    emit scriptError(tr("Script disabled after 5 consecutive timeouts. Reload the panel to enable it again."));
+                    setStatusText(tr("Disabled"));
+                    reportDiagnostic(QtCriticalMsg, tr("Script disabled after 5 consecutive timeouts. Reload the panel to enable it again."));
                 }
             } else {
                 m_consecutiveTimeouts = 0;
-                if (!success) emit scriptError(diagnostic);
+                setStatusText(success ? tr("Succeeded") : tr("Failed"));
+                if (!success) reportDiagnostic(QtCriticalMsg, diagnostic);
             }
             m_running = false;
             if (success && !values.isEmpty()) emit outputValuesReady(values);
@@ -619,15 +625,26 @@ void caScript::updateInputMetadata(int index, const QVariantMap &metadata)
     }
 }
 
-bool caScript::getShow() const
+caScript::DisplayMode caScript::getDisplayMode() const
 {
-    return m_show;
+    return m_displayMode;
 }
 
-void caScript::setShow(bool show)
+void caScript::setDisplayMode(DisplayMode mode)
 {
-    m_show = show;
+    m_displayMode = mode;
     update();
+}
+
+QString caScript::getDisplayText() const
+{
+    switch (m_displayMode) {
+    case LastOutput: return m_lastOutputText;
+    case Status: return m_statusText;
+    case Diagnostics: return m_diagnosticText;
+    case Hidden: return {};
+    }
+    return {};
 }
 
 QString caScript::getLastOutputText() const
@@ -635,21 +652,52 @@ QString caScript::getLastOutputText() const
     return m_lastOutputText;
 }
 
+void caScript::setStatusText(const QString &text)
+{
+    m_statusText = text;
+    if (m_displayMode == Status) update();
+}
+
+void caScript::reportDiagnostic(QtMsgType level, const QString &message)
+{
+    switch (level) {
+    case QtWarningMsg:
+        m_diagnosticText = tr("Warning: %1").arg(message);
+        emit scriptWarning(message);
+        break;
+    case QtCriticalMsg:
+        m_diagnosticText = tr("Error: %1").arg(message);
+        emit scriptError(message);
+        break;
+    default:
+        m_diagnosticText = tr("Info: %1").arg(message);
+        emit scriptInfo(message);
+        break;
+    }
+    if (m_displayMode == Diagnostics) update();
+}
+
+void caScript::reportConfigurationErrors(const QStringList &errors)
+{
+    setStatusText(tr("Failed"));
+    for (const QString &error : errors) reportDiagnostic(QtCriticalMsg, error);
+}
+
 void caScript::updateLastOutput(const QString &channel, const QVariant &value)
 {
     m_lastOutputText = channel + QStringLiteral(" = ") + value.toString();
-    update();
+    if (m_displayMode == LastOutput) update();
 }
 
 void caScript::paintEvent(QPaintEvent *event)
 {
     QWidget::paintEvent(event);
     const bool designer = qApp->property("APP_SOURCE").toString() == QStringLiteral("DESIGNER");
-    if (!designer && !m_show) return;
+    if (!designer && m_displayMode == Hidden) return;
     QPainter painter(this);
     painter.fillRect(rect(), designer ? QColor(Qt::blue) : palette().color(QPalette::Window));
     painter.setPen(designer ? QColor(Qt::white) : palette().color(QPalette::WindowText));
-    const QString text = designer ? objectName() : m_lastOutputText;
+    const QString text = designer ? objectName() : getDisplayText();
     painter.drawText(rect(), Qt::AlignCenter | Qt::TextWordWrap, text);
 }
 
@@ -665,8 +713,9 @@ void caScript::refreshTriggers()
     m_triggerTimer->stop();
     if (m_executionDisabled) return;
     const QStringList errors = triggerConfigurationErrors();
-    for (const QString &error : errors) emit scriptError(error);
-    if (errors.isEmpty() && m_triggerMode == Periodic) {
+    if (!errors.isEmpty()) {
+        reportConfigurationErrors(errors);
+    } else if (m_triggerMode == Periodic) {
         m_triggerTimer->start(m_triggerInterval);
     }
 }
@@ -891,7 +940,7 @@ void caScript::freezeChannelBindings()
 bool caScript::channelBindingsEditable()
 {
     if (!m_channelBindingsFrozen) return true;
-    emit scriptWarning(tr("Channel bindings are fixed for this panel. Reload it to apply changes."));
+    reportDiagnostic(QtWarningMsg, tr("Channel bindings are fixed for this panel. Reload it to apply changes."));
     return false;
 }
 

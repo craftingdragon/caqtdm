@@ -3614,17 +3614,26 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
     } else if(caScript* scriptWidget = qobject_cast<caScript *>(w1)) {
         scriptWidget->setProperty("ObjectType", caScript_Widget);
         scriptWidget->setProperty("Taken", true);
+        connect(scriptWidget, &caScript::scriptInfo, this, [this, scriptWidget](const QString &info) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), info).toLocal8Bit();
+            postMessageAndLog(QtInfoMsg, message.data(), caQtDMLibLog);
+        });
+        connect(scriptWidget, &caScript::scriptWarning, this, [this, scriptWidget](const QString &warning) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
+            postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+        });
+        connect(scriptWidget, &caScript::scriptError, this, [this, scriptWidget](const QString &error) {
+            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), error).toLocal8Bit();
+            postMessageAndLog(QtCriticalMsg, message.data(), caQtDMLibLog);
+        });
+
         const QStringList errors = scriptWidget->inputConfigurationErrors()
                                    + scriptWidget->outputConfigurationErrors()
                                    + scriptWidget->triggerConfigurationErrors();
         if (!errors.isEmpty()) {
             integerList.append(0);
             scriptWidget->setProperty("MonitorList", integerList);
-            for (const QString &error : errors) {
-                const QString message = tr("caScript %1: %2").arg(w1->objectName(), error);
-                QByteArray text = message.toLocal8Bit();
-                postMessageAndLog(QtCriticalMsg, text.data(), caQtDMLibLog);
-            }
+            scriptWidget->reportConfigurationErrors(errors);
             return;
         }
 
@@ -3645,18 +3654,6 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         scriptWidget->setProperty("MonitorList", integerList);
 
         connect(scriptWidget, &caScript::outputValuesReady, this, &CaQtDM_Lib::Callback_ScriptOutputs);
-        connect(scriptWidget, &caScript::scriptInfo, this, [this, scriptWidget](const QString &info) {
-            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), info).toLocal8Bit();
-            postMessageAndLog(QtInfoMsg, message.data(), caQtDMLibLog);
-        });
-        connect(scriptWidget, &caScript::scriptWarning, this, [this, scriptWidget](const QString &warning) {
-            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), warning).toLocal8Bit();
-            postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
-        });
-        connect(scriptWidget, &caScript::scriptError, this, [this, scriptWidget](const QString &error) {
-            QByteArray message = tr("caScript %1: %2").arg(scriptWidget->objectName(), error).toLocal8Bit();
-            postMessageAndLog(QtCriticalMsg, message.data(), caQtDMLibLog);
-        });
         scriptWidget->startTriggers();
 
     } else if(caAlarmTree* alarmTree = qobject_cast<caAlarmTree *>(w1)) {
@@ -7597,10 +7594,8 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
 {
     caScript *widget = qobject_cast<caScript *>(sender());
     if (!widget || !AllowsUpdate) return;
-    const auto warn = [this, widget](const QString &channel, const QString &reason) {
-        QByteArray message = tr("caScript %1: output %2 ignored: %3")
-            .arg(widget->objectName(), channel, reason).toLocal8Bit();
-        postMessageAndLog(QtWarningMsg, message.data(), caQtDMLibLog);
+    const auto warn = [widget](const QString &channel, const QString &reason) {
+        widget->reportDiagnostic(QtWarningMsg, tr("output %1 ignored: %2").arg(channel, reason));
     };
     const auto targetName = [](QString channel) {
         channel = channel.trimmed();

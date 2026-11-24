@@ -2,6 +2,7 @@
 
 | Panel | Purpose | Notes |
 |---|---|---|
+| [`script_debug.ui`](script_debug.ui) | Compare all four caScript display modes without an IOC. | [Scenarios and expected results](#debug-display) |
 | `script_scalar_outputs.ui` | EPICS score × Internal factor; metadata. | [Expected values and inputs](script_scalar_outputs.md) |
 | `script_mandelbrot.ui` | Explore the Apfelmännchen with live rendering, palettes, zoom, and pan. | [Launch and expected image](#mandelbrot) |
 | `script_median.ui` | Median and count above a threshold. | [Test data and waveform limitation](script_median.md) |
@@ -14,6 +15,21 @@
 Each guide describes the panel's inputs, controls, expected results and
 limitations.
 
+## Debug display
+
+From the repository root, open the panel with `caQtDM "$PWD/caQtDM_Tests/script_debug.ui"`.
+Select a scenario to run the four scripts or click **Run Again** to repeat it.
+
+| Scenario | What to look for |
+|---|---|
+| Success | LastOutput shows 42, Status shows Succeeded, and Diagnostics shows an info message. |
+| Warning | LastOutput changes to 84, Status shows Succeeded, and Diagnostics shows a warning. |
+| Script Error | Status shows Failed, Diagnostics reports the exception, and LastOutput retains the last successful write. |
+| Rejected Write | Status shows Succeeded, Diagnostics explains why the write was rejected, and LastOutput retains the last successful write. |
+| Timeout | Status shows Running and then Timed out. After five consecutive timeouts it shows Disabled. Reload the panel to start again. |
+
+Hidden stays blank in the viewer. In Qt Designer, select any of the four blue
+caScript widgets to inspect its `displayMode` property.
 
 ## Mandelbrot
 

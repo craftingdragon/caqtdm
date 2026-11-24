@@ -166,8 +166,8 @@ Change the factor and execute again to update the result.</string>
       <height>31</height>
      </rect>
     </property>
-    <property name="show">
-     <bool>true</bool>
+    <property name="displayMode">
+     <enum>caScript::LastOutput</enum>
     </property>
     <property name="triggerMode">
      <enum>caScript::TriggerMode::AnyInput</enum>
