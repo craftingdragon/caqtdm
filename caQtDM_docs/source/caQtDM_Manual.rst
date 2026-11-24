@@ -2856,11 +2856,16 @@ has no equivalent in MEDM
 
    Every execution receives fresh ``inputs``, ``outputs``, ``console``, and
    ``EpicsType`` bindings. A channel's key is its alias when supplied, otherwise
-   its configured channel name. Keys must be unique within each list. Use
-   square brackets for keys that contain characters such as ``:`` or ``.``.
-   For example, ``inputs["internal://sample"].value``. To keep state across
-   executions, store it on the JavaScript global object, for example with
-   ``globalThis`` where available.
+   its configured channel name. Keys must be unique within each list. Dot and
+   bracket notation both work when the key is a JavaScript identifier.
+   For example, ``inputs.sample.value`` and ``inputs["sample"].value`` read the
+   same input, and ``outputs.scaled.value`` and ``outputs["scaled"].value``
+   refer to the same output. Use brackets for a key held in a variable
+   (``inputs[channel].value``) or a literal key with punctuation
+   (``inputs["internal://sample"].value``).
+
+   To keep state across executions, store it on the JavaScript global object,
+   for example with ``globalThis`` where available.
 
    ``inputs[key]``
       Snapshot of the latest input. Scalar values are numbers or strings.
