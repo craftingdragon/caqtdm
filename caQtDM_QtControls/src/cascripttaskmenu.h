@@ -44,6 +44,7 @@ public:
     QList<QAction *> taskActions() const override;
 
 private:
+    QAction *m_editScript;
     QAction *m_inputs;
     QAction *m_outputs;
 };

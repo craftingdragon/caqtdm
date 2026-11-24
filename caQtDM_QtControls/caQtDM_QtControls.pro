@@ -179,6 +179,8 @@ XDR_HACK {
 }
 
 !MOBILE {
+    SOURCES += src/cascripteditordialog.cpp
+    HEADERS += src/cascripteditordialog.h
     SOURCES += src/cascriptdialog.cpp
     HEADERS += src/cascriptdialog.h
     SOURCES += src/cascripttaskmenu.cpp

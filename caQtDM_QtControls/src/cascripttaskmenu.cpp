@@ -25,12 +25,18 @@
 
 #include "cascripttaskmenu.h"
 #include "cascriptdialog.h"
+#include "cascripteditordialog.h"
 #include "cascript.h"
 
 CaScriptTaskMenu::CaScriptTaskMenu(caScript *widget, QObject *parent) : QObject(parent)
 {
+    m_editScript = new QAction(tr("Edit JavaScript..."), this);
     m_inputs = new QAction(tr("Edit input channels..."), this);
     m_outputs = new QAction(tr("Edit output channels..."), this);
+    connect(m_editScript, &QAction::triggered, this, [widget]() {
+        CaScriptEditorDialog dialog(widget, widget->window());
+        dialog.exec();
+    });
     connect(m_inputs, &QAction::triggered, this, [widget]() {
         CaScriptDialog dialog(widget, QStringLiteral("channels"), widget->window());
         dialog.exec();
@@ -43,12 +49,12 @@ CaScriptTaskMenu::CaScriptTaskMenu(caScript *widget, QObject *parent) : QObject(
 
 QAction *CaScriptTaskMenu::preferredEditAction() const
 {
-    return m_inputs;
+    return m_editScript;
 }
 
 QList<QAction *> CaScriptTaskMenu::taskActions() const
 {
-    return {m_inputs, m_outputs};
+    return {m_editScript, m_inputs, m_outputs};
 }
 
 CaScriptTaskMenuFactory::CaScriptTaskMenuFactory(QExtensionManager *parent) : QExtensionFactory(parent)
