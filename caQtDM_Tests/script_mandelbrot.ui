@@ -667,6 +667,12 @@ if (!this.frame || this.frame.geometry !== geometry) {
 }
 
 const frame = this.frame;
+if (this.intensityLimit !== iterations) {
+    this.intensityLimit = iterations;
+    this.intensityByCount = new Uint8Array(iterations);
+    for (let count = 1; count &lt; iterations; ++count)
+        this.intensityByCount[count] = Math.round(30 + colorScale * Math.log(count));
+}
 const reportProgress = (percent) =&gt; {
     if (percent === this.lastProgress) return;
     outputs.progress.value = percent;
@@ -679,7 +685,7 @@ if (frame.publishedPalette === palette) {
 
 // Keep the pixel loop across calls so the engine can optimize it as it warms up.
 if (!this.computePixels) {
-    this.computePixels = function(frame, end, rowOffset, ci, iterations, colorScale) {
+    this.computePixels = function(frame, end, rowOffset, ci, iterations, intensityByCount) {
         const ciSquared = ci * ci;
         const cardioidLimit = 0.25 * ciSquared;
         for (let x = frame.column; x &lt; end; ++x) {
@@ -688,27 +694,42 @@ if (!this.computePixels) {
                 frame.bulbSquares[x] + ciSquared &lt;= 0.0625) continue;
             const cr = frame.realCoordinates[x];
             let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
+            let checkpointReal = 0, checkpointImaginary = 0, nextCheckpoint = 32;
             while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
-                zi = 2 * zr * zi + ci;
-                zr = zrSquared - ziSquared + cr;
-                zrSquared = zr * zr;
-                ziSquared = zi * zi;
-                ++count;
+                const blockEnd = Math.min(iterations, count + 32);
+                do {
+                    zi = 2 * zr * zi + ci;
+                    zr = zrSquared - ziSquared + cr;
+                    zrSquared = zr * zr;
+                    ziSquared = zi * zi;
+                    ++count;
+                } while (count &lt; blockEnd &amp;&amp; zrSquared + ziSquared &lt;= 4);
+                // An exact repeat stays on the same orbit. Move the checkpoint
+                // less often as the orbit gets longer so it can catch longer cycles.
+                if (zr === checkpointReal &amp;&amp; zi === checkpointImaginary) {
+                    count = iterations;
+                    break;
+                }
+                if (count === nextCheckpoint) {
+                    checkpointReal = zr;
+                    checkpointImaginary = zi;
+                    nextCheckpoint *= 2;
+                }
             }
             if (count &lt; iterations)
-                frame.intensities[rowOffset + x] = Math.round(30 + colorScale * Math.log(count));
+                frame.intensities[rowOffset + x] = intensityByCount[count];
         }
     };
 }
 
-const deadline = Date.now() + 25;
+const deadline = Date.now() + 35;
 while (frame.row &lt; rows &amp;&amp; Date.now() &lt; deadline) {
     const y = frame.row;
     const rowOffset = y * width;
     const ci = imaginary + (height / 2 - y) * step;
     // A row near the boundary can contain many points that reach the iteration limit.
     const end = Math.min(frame.column + 64, width);
-    this.computePixels(frame, end, rowOffset, ci, iterations, colorScale);
+    this.computePixels(frame, end, rowOffset, ci, iterations, this.intensityByCount);
     frame.column = end;
     if (end === width) {
         if (symmetric &amp;&amp; y &gt; 0 &amp;&amp; height - y !== y)
@@ -756,6 +777,10 @@ while (rgb.row &lt; height &amp;&amp; Date.now() &lt; deadline) {
 // Reserve the last percent for publication after the camera has the dimensions.
 if (rgb.row &lt; height) {
     reportProgress(90 + Math.floor(9 * rgb.row / height));
+    return;
+}
+if (Date.now() &gt;= deadline) {
+    reportProgress(99);
     return;
 }
 
