@@ -1183,6 +1183,7 @@ before, many styles will be overwritten.
    "", ":ref:`caBitNames`", ":ref:`caScriptButton`"
    "", ":ref:`caCalc`", ":ref:`caSpinBox`"
    "", ":ref:`caTable`", ""
+   "", ":ref:`caScript`", ""
 
 Their main properties are described below. It must be noted that
 through inheritance of Objects other properties exist that are not
@@ -2791,28 +2792,165 @@ has no equivalent in MEDM
 ``caScript``
 ~~~~~~~~~~~~
 
-caScript runs panel JavaScript on a worker thread. Each execution gets fresh
-``inputs``, ``outputs``, ``console``, and ``EpicsType`` bindings. A script can keep
-deliberate state on the JavaScript global object (``globalThis`` or ``this``)
-for the lifetime of the widget.
+   **Description**
 
-Channel keys are aliases when supplied, otherwise channel names. Edit the
-channel lists in Designer and reload the panel to apply binding changes.
-Scripts assign a scalar to ``outputs[key].value``. The target must already
-exist as a connected, writable scalar ``internal://`` channel.
+   caScript runs panel JavaScript on a worker thread. A script can read process
+   variables (PVs), calculate results, and write them to existing
+   :ref:`internal plugin <internal>` channels. In Qt Designer, use
+   *Edit input channels...* and *Edit output channels...* from the widget's
+   context menu to configure the channel lists. Reload a running panel to apply
+   changes to its channel bindings.
 
-Text shown in ``inputs[key].value`` uses UTF-8 display decoding. The IOC may
-instead send Latin-1 bytes. Use ``inputs[key].fromLatin1()`` or
-``inputs[key].fromUtf8()`` to decode the original snapshot explicitly.
-``rawBytes`` exposes that snapshot as a ``Uint8Array``, including embedded NUL
-bytes in char waveforms. String waveform bytes retain the EPICS string
-separator (escape, byte 27) between elements.
+   **Properties**
 
-``DataDriven`` scripts require a valid sample from every input. A disconnect
-clears readiness until the next valid sample. ``Constant`` scripts can use the
-last good value on disconnect and can inspect ``connected``. An execution
-that exceeds one second is interrupted and its outputs are discarded.
-Five consecutive timeouts disable the widget until the panel is reloaded.
+   ``script``
+      JavaScript source to run on each trigger. Type is a string.
+
+   ``channels``
+      Input channels and optional aliases. Type is a JSON array stored as a string.
+      Each entry has a ``channel`` string and an optional ``alias`` string.
+      For example, ``[{"channel":"internal://sample","alias":"sample"}]``.
+
+   ``outputChannels``
+      Output channels and optional aliases. Uses the same format as ``channels``.
+      Each target must already exist as a connected, writable scalar
+      ``internal://`` channel. Define it with :ref:`genSoftPV`.
+
+   ``triggerMode``
+      Enum that selects when automatic execution is requested. The default is
+      ``Manual``.
+
+      - ``Manual`` waits for an explicit call to the ``executeScript()`` slot.
+      - ``AnyInput`` runs on a value update to any configured input.
+      - ``SelectedInput`` runs on a value update to the input named by
+        ``triggerInput``.
+      - ``MinimumInterval`` runs on input updates spaced by at least
+        ``triggerInterval`` milliseconds from the start of the previous run.
+        Updates inside that interval do not schedule a later run.
+      - ``Periodic`` requests a run every ``triggerInterval`` milliseconds.
+
+   ``triggerInput``
+      Alias of the selected input, or its configured channel name if it has no
+      alias. Type is a string. Used by ``SelectedInput``.
+
+   ``triggerInterval``
+      Positive integer in milliseconds for ``MinimumInterval`` and
+      ``Periodic``. The default is 100 ms.
+
+   ``executionMode``
+      Enum that controls input readiness. The default is ``Constant``.
+
+      - ``Constant`` allows a run before any input arrives. An input with no
+        sample has no ``value`` property. After a disconnect, the last sample
+        remains available with ``connected`` set to ``false``.
+      - ``DataDriven`` requires a valid sample from every input. After a
+        disconnect or an invalid sample, the widget waits for fresh data.
+        When using ``SelectedInput``, a new update to the selected input is
+        required if it triggered before the other inputs were ready.
+
+   ``show``
+      Boolean that displays the most recent accepted output write on the
+      widget. The default is ``false``.
+
+   **JavaScript bindings**
+
+   Every execution receives fresh ``inputs``, ``outputs``, ``console``, and
+   ``EpicsType`` bindings. A channel's key is its alias when supplied, otherwise
+   its configured channel name. Keys must be unique within each list. Use
+   square brackets for keys that contain characters such as ``:`` or ``.``.
+   For example, ``inputs["internal://sample"].value``. To keep state across
+   executions, store it on the JavaScript global object, for example with
+   ``globalThis`` where available.
+
+   ``inputs[key]``
+      Snapshot of the latest input. Scalar values are numbers or strings.
+      Numeric and string waveforms are arrays, numeric matrices are arrays of
+      rows, and char waveforms are exposed as text and bytes. The snapshot also
+      provides channel metadata such as ``connected``, ``accessR``, ``accessW``,
+      ``status``, ``severity``, ``units``, ``precision``, ``nelm``,
+      ``valueCount``, ``dimCount``, ``dim``, and the fields for display, alarm,
+      warning, and control limits. Enum inputs expose a numeric ``value`` and,
+      when available, ``label`` and ``enumStrings``.
+
+      Text values use UTF-8 display decoding. An IOC can send Latin-1 or
+      UTF-8. Choose ``inputs[key].fromLatin1()`` or
+      ``inputs[key].fromUtf8()`` to decode the original bytes. When present,
+      ``rawBytes`` is a ``Uint8Array`` and preserves embedded NULs in char
+      waveforms. String waveform bytes retain the separator between elements
+      (escape, byte 27).
+
+      Use ``inputs[key].convert(EpicsType.Long)``, for example, to convert a
+      scalar explicitly. ``EpicsType`` defines the constants ``String``,
+      ``Short``, ``Float``, ``Enum``, ``Char``, ``Long``, and ``Double``.
+      The input metadata field ``fieldtype`` uses those same constants.
+      ``convert()`` throws on invalid conversions, including arrays and
+      values outside the requested integer range.
+
+   ``outputs[key].value``
+      Assign a number or string to request a write when the script finishes
+      successfully. A channel with no assignment is skipped. Numeric targets
+      require finite values within the target's range, with integer values
+      rounded to the nearest integer, ties away from zero. Internal String
+      targets accept Latin-1 text without embedded NULs. Invalid or duplicate
+      targets and rejected values are reported in the message window.
+
+   ``console.log()``, ``console.warn()``, ``console.error()``
+      Send informational, warning, and error messages to the caQtDM log and
+      message window. The widget forwards up to 100 console messages per run.
+      Calling ``console.error()`` logs a message. Throw an exception to fail
+      the run and discard its pending outputs.
+
+   **Slots**
+
+   ``executeScript()``
+      Requests one execution in any trigger mode. In Designer, connect a
+      button's ``clicked()`` signal to this slot for a manual trigger. The request
+      follows the same input readiness and busy checks as automatic triggers.
+
+   **Signals**
+
+   ``inputValueUpdated(int index)``
+      Emitted after a value update. The zero-based index follows the order
+      in ``channels``.
+
+   ``scriptFinished(bool success)``
+      Reports the outcome of script execution. Individual output writes
+      can still be rejected by the viewer.
+
+   ``outputValuesReady(const QVariantMap &values)``
+      Emitted after a successful execution with output assignments. The map
+      holds candidate values keyed by alias or configured output channel name.
+
+   ``scriptInfo(const QString &message)``
+      Reports informational console messages.
+
+   ``scriptWarning(const QString &message)``
+      Reports console warnings, dropped triggers during an active run, and
+      executions exceeding 100 ms.
+
+   ``scriptError(const QString &message)``
+      Reports console errors and runtime diagnostics. At one second the worker
+      interrupts execution and discards pending outputs. Five consecutive
+      timeouts disable the widget until the panel is reloaded.
+
+   **Example**
+
+   Define two Double channels with ``genSoftPV`` named ``sample`` and
+   ``scaledSample``. Set the initial ``sample`` value to 21. Bind
+   ``internal://sample`` as the input alias ``sample``, and bind
+   ``internal://scaledSample`` as the output alias ``scaled``. Set
+   ``executionMode`` to ``DataDriven`` and ``triggerMode`` to ``AnyInput``.
+
+   .. code-block:: javascript
+
+      outputs.scaled.value = inputs.sample.value * 2;
+
+   A ``caLineEdit`` monitoring ``internal://scaledSample`` displays 42.
+   The panels ``script_conversions.ui`` and ``script_console_conversions.ui``
+   in ``caQtDM_Tests`` demonstrate conversions, explicit text decoding,
+   console output, and timeout behavior.
+
+--------------
 
 .. _caScriptButton:
 
