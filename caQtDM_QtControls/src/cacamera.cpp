@@ -2008,6 +2008,19 @@ QImage *caCamera::showImageCalc(int datasize, char *data, short datatype)
     }
 
 
+    if(!getAutomateChecked()) {
+        int minv = getMin();
+        int maxv = getMax();
+        if(maxv >= minv) {
+            maxvalue = maxv;
+            minvalue = minv;
+        } else {
+            maxvalue = minv;
+            minvalue = maxv;
+        }
+        if(maxvalue == minvalue) maxvalue = minvalue + 1000;
+    }
+
     Max[1] =  0;
     Min[1] = 65535;
 
@@ -2279,17 +2292,6 @@ void caCamera::showImage(int datasize, char *data, short datatype)
     if(getAutomateChecked()) {
         updateMax(maxvalue);
         updateMin(minvalue);
-    } else {
-        int minv = getMin();
-        int maxv = getMax();
-        if(maxv >= minv) {
-            maxvalue = maxv;
-            minvalue = minv;
-        } else {
-            maxvalue = minv;
-            minvalue = maxv;
-        }
-        if(maxvalue == minvalue) maxvalue = minvalue + 1000;
     }
 
     UpdatesPerSecond++;

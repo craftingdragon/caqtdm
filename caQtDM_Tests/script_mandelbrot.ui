@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MandelbrotPanel</class>
+ <widget class="QWidget" name="MandelbrotPanel">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>690</width>
+    <height>590</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Mandelbrot-Menge · Apfelmännchen</string>
+  </property>
+  <layout class="QVBoxLayout" name="panelLayout" stretch="1,0,0">
+   <item>
+    <widget class="caCamera" name="mandelbrotCamera">
+     <property name="channelData" stdset="0">
+      <string notr="true">internal://mandelbrotPixels</string>
+     </property>
+     <property name="channelWidth" stdset="0">
+      <string notr="true">internal://mandelbrotWidth</string>
+     </property>
+     <property name="channelHeight" stdset="0">
+      <string notr="true">internal://mandelbrotHeight</string>
+     </property>
+     <property name="simpleZoomedView">
+      <bool>true</bool>
+     </property>
+     <property name="colorMode">
+      <enum>caCamera::Mono8</enum>
+     </property>
+     <property name="ColorMap">
+      <enum>caCamera::mono_to_hot</enum>
+     </property>
+     <property name="automaticLevels">
+      <bool>false</bool>
+     </property>
+     <property name="minLevel">
+      <string notr="true">0</string>
+     </property>
+     <property name="maxLevel">
+      <string notr="true">255</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="controls">
+     <item>
+      <widget class="QPushButton" name="render">
+       <property name="text">
+        <string>Render Mandelbrot</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="caScript" name="mandelbrotScript">
+       <property name="minimumSize">
+        <size>
+         <width>280</width>
+         <height>32</height>
+        </size>
+       </property>
+       <property name="show">
+        <bool>true</bool>
+       </property>
+       <property name="executionMode">
+        <enum>caScript::DataDriven</enum>
+       </property>
+       <property name="channels">
+        <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"width"},{"channel":"internal://mandelbrotHeight","alias":"height"}]</string>
+       </property>
+       <property name="outputChannels">
+        <string notr="true">[{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
+       </property>
+       <property name="script">
+        <string notr="true">const width = inputs.width.value;
+const height = inputs.height.value;
+const maxIterations = 96;
+const pixels = new Array(width * height);
+const step = 3.2 / width;
+const colorScale = 225 / Math.log(maxIterations);
+
+for (let y = 0; y &lt; height; ++y) {
+    const ci = (height / 2 - y) * step;
+    const ciSquared = ci * ci;
+    for (let x = 0; x &lt; width; ++x) {
+        const cr = -2.2 + x * step;
+        const index = y * width + x;
+
+        // Points in the main cardioid or period-2 bulb cannot escape.
+        const offset = cr - 0.25;
+        const q = offset * offset + ciSquared;
+        if (q * (q + offset) &lt;= 0.25 * ciSquared ||
+            (cr + 1) * (cr + 1) + ciSquared &lt;= 0.0625) {
+            pixels[index] = 0;
+            continue;
+        }
+
+        let zr = 0, zi = 0;
+        let zrSquared = 0, ziSquared = 0;
+        let iterations = 0;
+        while (iterations &lt; maxIterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
+            zi = 2 * zr * zi + ci;
+            zr = zrSquared - ziSquared + cr;
+            zrSquared = zr * zr;
+            ziSquared = zi * zi;
+            ++iterations;
+        }
+        pixels[index] = iterations === maxIterations
+            ? 0 : Math.round(30 + colorScale * Math.log(iterations));
+    }
+}
+outputs.image.value = pixels;</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QWidget" name="internalChannels">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <layout class="QHBoxLayout" name="channelDefinitions">
+      <item>
+       <widget class="genSoftPV" name="widthDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotWidth</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Long</enum>
+        </property>
+        <property name="value">
+         <string notr="true">256</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="heightDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotHeight</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Long</enum>
+        </property>
+        <property name="value">
+         <string notr="true">192</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="imageDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotPixels</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Char</enum>
+        </property>
+        <property name="value">
+         <string notr="true">0</string>
+        </property>
+        <property name="step">
+         <double>0.0</double>
+        </property>
+        <property name="nelm">
+         <number>49152</number>
+        </property>
+        <property name="nord">
+         <number>49152</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>caCamera</class>
+   <extends>QWidget</extends>
+   <header>cacamera.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caScript</class>
+   <extends>QWidget</extends>
+   <header>cascript.h</header>
+   <slots>
+    <slot>executeScript()</slot>
+   </slots>
+  </customwidget>
+  <customwidget>
+   <class>genSoftPV</class>
+   <extends>QWidget</extends>
+   <header>gensoftpv.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>render</sender>
+   <signal>clicked()</signal>
+   <receiver>mandelbrotScript</receiver>
+   <slot>executeScript()</slot>
+  </connection>
+ </connections>
+</ui>
