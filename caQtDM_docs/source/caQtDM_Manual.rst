@@ -1943,6 +1943,11 @@ is the equivalent of the Byte Monitor in MEDM.
       channel with the vertical resolution in pixel
    **simpleZoomedView**
       boolean to reduce the complexity of the widget to get an image only view
+   **imageClickChannel**
+      In simple view, send clicks inside the displayed image to a writable scalar
+      internal String channel. The format is ``sequence,x,y``, with x and y
+      normalized from 0 at the top left to 1 at the bottom right.
+
    **Zoom**
       enables/disables the zoom bar on the right site of the widget 
    **automaticLevels**

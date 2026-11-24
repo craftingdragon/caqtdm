@@ -74,6 +74,7 @@ class QTCON_EXPORT caCamera : public QWidget
     Q_PROPERTY(QString channelData READ getPV_Data WRITE setPV_Data)
     Q_PROPERTY(QString channelWidth READ getPV_Width WRITE setPV_Width)
     Q_PROPERTY(QString channelHeight READ getPV_Height WRITE setPV_Height)
+    Q_PROPERTY(QString imageClickChannel READ getImageClickChannel WRITE setImageClickChannel)
 
     Q_PROPERTY(bool simpleZoomedView READ getSimpleView WRITE setSimpleView)
     Q_PROPERTY(zoom Zoom READ getFitToSize WRITE setFitToSize)
@@ -149,6 +150,8 @@ public:
     void updateImage(const QImage &image, bool valuesPresent[], double values[], double scaleFactor,
                      QVarLengthArray<double> X, QVarLengthArray<double> Y);
     void getROI(QPointF &P1, QPointF &P2);
+    QString getImageClickChannel() const { return imageClickChannel; }
+    void setImageClickChannel(const QString &channel);
     QImage * showImageCalc(int datasize, char *data, short datatype);
     void showImage(int datasize, char *data, short datatype);
 
@@ -296,6 +299,7 @@ public slots:
 */
 signals:
    void WriteDetectedValuesSignal(QWidget*);
+   void imageClicked(const QPointF &point);
 
 private slots:
     void zoomIn(int level = 1);
@@ -384,6 +388,7 @@ private:
     bool buttonPressed;
     QString  thisPV_Mode, thisPV_Packing;
     QString thisPV_Data, thisPV_Width, thisPV_Height;
+    QString imageClickChannel;
     QString thisPV_Xaverage, thisPV_Yaverage;
     QStringList thisCustomMap;
     ROI_type thisROIreadtype, thisROIwritetype;

@@ -51,6 +51,7 @@ public:
     void rescaleSelectionBox(const double &scaleFactor);
     void updateSelectionBox(QPoint selectionPoints[], const bool &selectInProgress);
     void getImageDimensions(int &width, int &height);
+    bool normalizedImagePoint(const QPointF &position, QPointF &point) const;
     void updateDisconnected();
 
     // must match definitions in cacamera and cascan2d

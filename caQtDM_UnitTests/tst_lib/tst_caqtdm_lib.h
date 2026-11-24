@@ -73,6 +73,7 @@ private slots:
     void scriptWritesExistingScalar_data();
     void scriptWritesExistingScalar();
     void scriptKeepsInternalOutputBinding();
+    void cameraClickWritesNormalizedImageCoordinates();
     void scriptWritesInternalWaveform_data();
     void scriptWritesInternalWaveform();
     void scriptInvalidWaveformClearsReadiness();

@@ -27,6 +27,7 @@
 
 #include <caapplynumeric.h>
 #include <cainclude.h>
+#include <cacamera.h>
 #include <canumeric.h>
 #include <caspinbox.h>
 #include <cascript.h>
@@ -434,6 +435,65 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     } else {
         QCOMPARE(data->edata.rvalue, expected.toDouble());
     }
+}
+
+void TestCaQtDM_Lib::cameraClickWritesNormalizedImageCoordinates()
+{
+    genSoftPV target(m_parentAS);
+    target.setVariable(QStringLiteral("cameraClick"));
+    target.setDataType(genSoftPV::String);
+    target.setValue(QStringLiteral("none"));
+    m_caQtDM_Lib->HandleWidget(&target, "", true, true);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    auto *data = m_mutexKnobData->getMutexKnobDataPV(&target, QStringLiteral("cameraClick"));
+    QVERIFY(data);
+    QVERIFY(data->edata.connected);
+
+    caCamera camera(m_parentAS);
+    camera.setSimpleView(true);
+    camera.setImageClickChannel(QStringLiteral("internal://cameraClick"));
+    m_caQtDM_Lib->HandleWidget(&camera, "", false, false);
+    camera.resize(200, 200);
+    camera.show();
+    camera.layout()->activate();
+
+    QWidget *display = nullptr;
+    for (auto *child : camera.findChildren<QWidget *>()) {
+        if (child->inherits("ImageWidget")) {
+            display = child;
+            break;
+        }
+    }
+    QVERIFY(display);
+
+    QImage image(100, 50, QImage::Format_RGB32);
+    image.fill(Qt::blue);
+    bool present[4] = {};
+    double values[4] = {};
+    camera.updateImage(image, present, values, 1.0, {}, {});
+    const auto read = [data]() {
+        QMutexLocker lock(static_cast<QMutex *>(data->mutex));
+        return QByteArray(static_cast<const char *>(data->edata.dataB));
+    };
+
+    const int centerX = display->width() / 2;
+    const int centerY = display->width() / 4;
+    QVERIFY(display->height() > display->width() / 2);
+    QTest::mouseClick(display, Qt::LeftButton, Qt::NoModifier, QPoint(centerX, display->height() - 1));
+    QCOMPARE(read(), QByteArray("none"));
+
+    QTest::mouseClick(display, Qt::LeftButton, Qt::NoModifier, QPoint(centerX, centerY));
+    const auto first = read().split(',');
+    QCOMPARE(first.size(), 3);
+    QCOMPARE(first.at(0), QByteArray("1"));
+    QVERIFY(qAbs(first.at(1).toDouble() - 0.5) < 0.01);
+    QVERIFY(qAbs(first.at(2).toDouble() - 0.5) < 0.01);
+
+    QTest::mouseClick(display, Qt::LeftButton, Qt::NoModifier, QPoint(centerX, centerY));
+    QVERIFY(read().startsWith("2,"));
+    camera.showDisconnected();
+    QTest::mouseClick(display, Qt::LeftButton, Qt::NoModifier, QPoint(centerX, centerY));
+    QVERIFY(read().startsWith("2,"));
 }
 
 void TestCaQtDM_Lib::scriptWritesInternalWaveform_data()

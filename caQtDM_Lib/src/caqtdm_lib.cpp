@@ -1934,6 +1934,31 @@ void CaQtDM_Lib::HandleWidget(QWidget *w1, QString macro, bool firstPass, bool t
         // if we need to write channels from the camera widget, we do it by timer and slot
         connect(cameraWidget, SIGNAL(WriteDetectedValuesSignal(QWidget*)), this, SLOT(Callback_WriteDetectedValues(QWidget*)));
 
+        QString clickChannel = cameraWidget->getImageClickChannel();
+        const QString internalPrefix = QStringLiteral("internal://");
+        if (!clickChannel.isEmpty()) {
+            reaffectText(map, &clickChannel, w1);
+            clickChannel = clickChannel.trimmed();
+        }
+        if (clickChannel.startsWith(internalPrefix)) {
+            const QString clickPv = MutexKnobData::internalPvKey(clickChannel.mid(internalPrefix.size()));
+            connect(cameraWidget, &caCamera::imageClicked, this,
+                    [this, cameraWidget, clickPv, sequence = quint32(0)](const QPointF &point) mutable {
+                knobData target;
+                if (!AllowsUpdate || !mutexKnobDataP->getInternalOutputTarget(cameraWidget, clickPv, false, target)
+                    || !target.edata.connected || !target.edata.accessW || target.edata.fieldtype != caSTRING
+                    || target.edata.nelm != 1 || target.edata.dimCount != 0 || !target.pluginInterface)
+                    return;
+
+                QByteArray event = QStringLiteral("%1,%2,%3").arg(++sequence)
+                    .arg(point.x(), 0, 'f', 8).arg(point.y(), 0, 'f', 8).toLatin1();
+                QByteArray object = cameraWidget->objectName().toLatin1();
+                char error[SMALL_STRING_LENGTH] = {};
+                auto *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+                plugin->pvSetValue(&target, 0.0, 0, event.data(), object.data(), error, 0);
+            });
+        }
+
         // addmonitor normally will add a tooltip to show the pv; however here we have more than one pv
         QString tooltip;
         QString pvs1= "";

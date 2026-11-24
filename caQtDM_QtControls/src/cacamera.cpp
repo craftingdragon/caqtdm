@@ -401,6 +401,15 @@ void caCamera::getROI(QPointF &p1, QPointF &p2)
     p2 = P2;
 }
 
+void caCamera::setImageClickChannel(const QString &channel)
+{
+    imageClickChannel = channel;
+    if(thisSimpleView && imageW) {
+        if(channel.isEmpty()) imageW->unsetCursor();
+        else imageW->setCursor(Qt::CrossCursor);
+    }
+}
+
 void caCamera::Coordinates(int posX, int posY, double &newX, double &newY, double &maxX, double &maxY)
 {
     // calculate true x, y values and limits of picture
@@ -449,9 +458,21 @@ template <typename pureData> int caCamera::zValueImage(pureData *ptr, colormode 
 
 bool caCamera::eventFilter(QObject *obj, QEvent *event)
 {
-    Q_UNUSED(obj);
-
-    if(thisSimpleView) return false;
+    if(thisSimpleView) {
+        if(obj != imageW || imageClickChannel.isEmpty() || event->type() != QEvent::MouseButtonRelease)
+            return false;
+        const auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if(mouseEvent->button() != Qt::LeftButton) return false;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QPointF position = mouseEvent->position();
+#else
+        const QPointF position = mouseEvent->pos();
+#endif
+        QPointF point;
+        if(!imageW->normalizedImagePoint(position, point)) return false;
+        emit imageClicked(point);
+        return true;
+    }
     buttonPressed = false;
 
     if (event->type() == QEvent::MouseButtonPress) {
@@ -778,7 +799,8 @@ void caCamera::setup()
         updateMax(0);
     } else {
         imageW   = new ImageWidget();
-        // add to main layout
+        imageW->installEventFilter(this);
+        if(!imageClickChannel.isEmpty()) imageW->setCursor(Qt::CrossCursor);
         mainLayout->addWidget(imageW, 0, 0);
         thisFitToSize = Yes;
     }

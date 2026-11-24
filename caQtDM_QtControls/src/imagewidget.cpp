@@ -55,6 +55,16 @@ void ImageWidget::getImageDimensions(int &width, int &height)
     height = qRound(imageNew.size().height() * correction);
 }
 
+bool ImageWidget::normalizedImagePoint(const QPointF &position, QPointF &point) const
+{
+    if(imageNew.isNull() || disconnected || scaleFactorL <= 0.0) return false;
+    const qreal x = position.x() / (scaleFactorL * imageNew.width());
+    const qreal y = position.y() / (scaleFactorL * imageNew.height());
+    if(x < 0.0 || x >= 1.0 || y < 0.0 || y >= 1.0) return false;
+    point = QPointF(x, y);
+    return true;
+}
+
 void ImageWidget::updateDisconnected()
 {
     disconnected = true;
