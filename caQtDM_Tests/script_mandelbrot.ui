@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>690</width>
-    <height>590</height>
+    <height>735</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -29,10 +29,10 @@
       <bool>true</bool>
      </property>
      <property name="colorMode">
-      <enum>caCamera::Mono8</enum>
+      <enum>caCamera::RGB1_CA</enum>
      </property>
      <property name="ColorMap">
-      <enum>caCamera::mono_to_hot</enum>
+      <enum>caCamera::as_is</enum>
      </property>
      <property name="automaticLevels">
       <bool>false</bool>
@@ -46,73 +46,188 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="controls">
+    <layout class="QVBoxLayout" name="controls">
      <item>
-      <widget class="QPushButton" name="render">
-       <property name="text">
-        <string>Render Mandelbrot</string>
+      <layout class="QHBoxLayout" name="iterationsRow" stretch="0,1,0">
+       <item>
+        <widget class="QLabel" name="iterationsLabel">
+         <property name="text">
+          <string>Maximale Iterationen</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caSlider" name="iterationsSlider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotIterations</string>
+         </property>
+         <property name="direction">
+          <enum>caSlider::Right</enum>
+         </property>
+         <property name="scalePosition">
+          <enum>QwtSlider::NoScale</enum>
+         </property>
+         <property name="incrementValue">
+          <double>1</double>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caLineEdit" name="iterationsReadout">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>60</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotIterations</string>
+         </property>
+         <property name="fontScaleMode">
+          <enum>caLineEdit::None</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="caChoice" name="palette">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>34</height>
+        </size>
+       </property>
+       <property name="channel">
+        <string notr="true">internal://mandelbrotPalette</string>
+       </property>
+       <property name="stackingMode">
+        <enum>caChoice::Column</enum>
        </property>
       </widget>
      </item>
      <item>
-      <widget class="caScript" name="mandelbrotScript">
-       <property name="minimumSize">
-        <size>
-         <width>280</width>
-         <height>32</height>
-        </size>
-       </property>
-       <property name="show">
-        <bool>true</bool>
-       </property>
-       <property name="executionMode">
-        <enum>caScript::DataDriven</enum>
-       </property>
-       <property name="channels">
-        <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"width"},{"channel":"internal://mandelbrotHeight","alias":"height"}]</string>
-       </property>
-       <property name="outputChannels">
-        <string notr="true">[{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
-       </property>
-       <property name="script">
-        <string notr="true">const width = inputs.width.value;
-const height = inputs.height.value;
-const maxIterations = 96;
-const pixels = new Array(width * height);
-const step = 3.2 / width;
-const colorScale = 225 / Math.log(maxIterations);
-
-for (let y = 0; y &lt; height; ++y) {
-    const ci = (height / 2 - y) * step;
-    const ciSquared = ci * ci;
-    for (let x = 0; x &lt; width; ++x) {
-        const cr = -2.2 + x * step;
-        const index = y * width + x;
-
-        // Points in the main cardioid or period-2 bulb cannot escape.
-        const offset = cr - 0.25;
-        const q = offset * offset + ciSquared;
-        if (q * (q + offset) &lt;= 0.25 * ciSquared ||
-            (cr + 1) * (cr + 1) + ciSquared &lt;= 0.0625) {
-            pixels[index] = 0;
-            continue;
-        }
-
-        let zr = 0, zi = 0;
-        let zrSquared = 0, ziSquared = 0;
-        let iterations = 0;
-        while (iterations &lt; maxIterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
-            zi = 2 * zr * zi + ci;
-            zr = zrSquared - ziSquared + cr;
-            zrSquared = zr * zr;
-            ziSquared = zi * zi;
-            ++iterations;
-        }
-        pixels[index] = iterations === maxIterations
-            ? 0 : Math.round(30 + colorScale * Math.log(iterations));
-    }
-}
-outputs.image.value = pixels;</string>
+      <layout class="QHBoxLayout" name="zoomRow" stretch="0,1,0,0">
+       <item>
+        <widget class="QLabel" name="zoomLabel">
+         <property name="text">
+          <string>Zoom</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caSlider" name="zoomSlider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotZoom</string>
+         </property>
+         <property name="direction">
+          <enum>caSlider::Right</enum>
+         </property>
+         <property name="scalePosition">
+          <enum>QwtSlider::NoScale</enum>
+         </property>
+         <property name="incrementValue">
+          <double>1</double>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caLineEdit" name="zoomReadout">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>60</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotZoom</string>
+         </property>
+         <property name="fontScaleMode">
+          <enum>caLineEdit::None</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="zoomUnits">
+         <property name="text">
+          <string>×</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="centerRow" stretch="0,1,0,1">
+       <item>
+        <widget class="QLabel" name="realLabel">
+         <property name="text">
+          <string>Realteil</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caTextEntry" name="realCenter">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotReal</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="imaginaryLabel">
+         <property name="text">
+          <string>Imaginärteil</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caTextEntry" name="imaginaryCenter">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>26</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotImaginary</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QPushButton" name="resetView">
+       <property name="text">
+        <string>Ansicht zurücksetzen</string>
        </property>
       </widget>
      </item>
@@ -165,10 +280,226 @@ outputs.image.value = pixels;</string>
          <double>0.0</double>
         </property>
         <property name="nelm">
-         <number>49152</number>
+         <number>147459</number>
         </property>
         <property name="nord">
-         <number>49152</number>
+         <number>147459</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="iterationsDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotIterations</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Long</enum>
+        </property>
+        <property name="value">
+         <string notr="true">200</string>
+        </property>
+        <property name="drvl">
+         <string notr="true">32</string>
+        </property>
+        <property name="drvh">
+         <string notr="true">1024</string>
+        </property>
+        <property name="precision">
+         <number>0</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="paletteDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotPalette</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Enum</enum>
+        </property>
+        <property name="value">
+         <string notr="true">0</string>
+        </property>
+        <property name="enumStrings">
+         <stringlist>
+          <string>Klassisch</string>
+          <string>Feuer</string>
+          <string>Graustufen</string>
+         </stringlist>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="zoomDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotZoom</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Long</enum>
+        </property>
+        <property name="value">
+         <string notr="true">1</string>
+        </property>
+        <property name="drvl">
+         <string notr="true">1</string>
+        </property>
+        <property name="drvh">
+         <string notr="true">64</string>
+        </property>
+        <property name="precision">
+         <number>0</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="realDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotReal</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Double</enum>
+        </property>
+        <property name="value">
+         <string notr="true">-0.6</string>
+        </property>
+        <property name="drvl">
+         <string notr="true">-2.5</string>
+        </property>
+        <property name="drvh">
+         <string notr="true">1.5</string>
+        </property>
+        <property name="precision">
+         <number>6</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="genSoftPV" name="imaginaryDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotImaginary</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Double</enum>
+        </property>
+        <property name="value">
+         <string notr="true">0</string>
+        </property>
+        <property name="drvl">
+         <string notr="true">-1.5</string>
+        </property>
+        <property name="drvh">
+         <string notr="true">1.5</string>
+        </property>
+        <property name="precision">
+         <number>6</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="caScript" name="mandelbrotScript">
+        <property name="executionMode">
+         <enum>caScript::DataDriven</enum>
+        </property>
+        <property name="triggerMode">
+         <enum>caScript::Periodic</enum>
+        </property>
+        <property name="triggerInterval">
+         <number>200</number>
+        </property>
+        <property name="channels">
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"width"},{"channel":"internal://mandelbrotHeight","alias":"height"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+        </property>
+        <property name="outputChannels">
+         <string notr="true">[{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
+        </property>
+        <property name="script">
+         <string notr="true">const width = inputs.width.value;
+const height = inputs.height.value;
+const iterations = inputs.iterations.value;
+const palette = inputs.palette.value;
+const zoom = inputs.zoom.value;
+const real = inputs.real.value;
+const imaginary = inputs.imaginary.value;
+const settings = [width, height, iterations, palette, zoom, real, imaginary].join(',');
+
+if (!this.frame || this.frame.settings !== settings) {
+    const stops = [
+        [[6, 15, 48], [15, 69, 140], [49, 176, 209], [246, 209, 115], [255, 251, 233]],
+        [[41, 0, 9], [134, 8, 16], [220, 42, 10], [250, 158, 31], [255, 250, 190]]
+    ];
+    const colors = [[0, 0, 0]];
+    for (let i = 1; i &lt;= 255; ++i) {
+        if (palette === 2) {
+            colors.push([i, i, i]);
+        } else {
+            const scale = (i - 1) * 4 / 254;
+            const segment = Math.min(3, Math.floor(scale));
+            const fraction = scale - segment;
+            const low = stops[palette][segment];
+            const high = stops[palette][segment + 1];
+            colors.push(low.map((value, channel) =&gt;
+                Math.round(value + fraction * (high[channel] - value))));
+        }
+    }
+    // The RGB1_CA decoder checks for another RGB triplet after the final row.
+    const pixels = new Array(width * height * 3 + 3);
+    pixels.fill(0, pixels.length - 3);
+    this.frame = { settings, colors, pixels, row: 0 };
+}
+
+const frame = this.frame;
+if (frame.row === height) return;
+
+const step = 3.2 / (width * zoom);
+const colorScale = 225 / Math.log(iterations);
+const deadline = Date.now() + 30;
+do {
+    const y = frame.row++;
+    const ci = imaginary + (height / 2 - y) * step;
+    const ciSquared = ci * ci;
+    for (let x = 0; x &lt; width; ++x) {
+        const cr = real + (x - width / 2) * step;
+        const offset = cr - 0.25;
+        const q = offset * offset + ciSquared;
+        let intensity = 0;
+        // The main cardioid and period-2 bulb are inside the set.
+        if (q * (q + offset) &gt; 0.25 * ciSquared &amp;&amp;
+            (cr + 1) * (cr + 1) + ciSquared &gt; 0.0625) {
+            let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
+            while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
+                zi = 2 * zr * zi + ci;
+                zr = zrSquared - ziSquared + cr;
+                zrSquared = zr * zr;
+                ziSquared = zi * zi;
+                ++count;
+            }
+            if (count &lt; iterations) intensity = Math.round(30 + colorScale * Math.log(count));
+        }
+        const color = frame.colors[intensity];
+        const index = (y * width + x) * 3;
+        frame.pixels[index] = color[0];
+        frame.pixels[index + 1] = color[1];
+        frame.pixels[index + 2] = color[2];
+    }
+} while (frame.row &lt; height &amp;&amp; Date.now() &lt; deadline);
+
+if (frame.row === height) {
+    outputs.image.value = frame.pixels;
+    frame.pixels = null;
+    frame.colors = null;
+}</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="caScript" name="resetScript">
+        <property name="outputChannels">
+         <string notr="true">[{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+        </property>
+        <property name="script">
+         <string notr="true">outputs.zoom.value = 1;
+outputs.real.value = -0.6;
+outputs.imaginary.value = 0;</string>
         </property>
        </widget>
       </item>
@@ -196,13 +527,33 @@ outputs.image.value = pixels;</string>
    <extends>QWidget</extends>
    <header>gensoftpv.h</header>
   </customwidget>
+  <customwidget>
+   <class>caSlider</class>
+   <extends>QWidget</extends>
+   <header>caslider.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caChoice</class>
+   <extends>QWidget</extends>
+   <header>cachoice.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>calineedit.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caTextEntry</class>
+   <extends>caLineEdit</extends>
+   <header>catextentry.h</header>
+  </customwidget>
  </customwidgets>
  <resources/>
  <connections>
   <connection>
-   <sender>render</sender>
+   <sender>resetView</sender>
    <signal>clicked()</signal>
-   <receiver>mandelbrotScript</receiver>
+   <receiver>resetScript</receiver>
    <slot>executeScript()</slot>
   </connection>
  </connections>

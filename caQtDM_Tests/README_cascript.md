@@ -3,7 +3,7 @@
 | Panel | Purpose | Notes |
 |---|---|---|
 | `script_scalar_outputs.ui` | EPICS score × Internal factor; metadata. | [Expected values and inputs](script_scalar_outputs.md) |
-| `script_mandelbrot.ui` | Render an Apfelmännchen through an internal Char waveform and caCamera. | [Launch and expected image](#mandelbrot) |
+| `script_mandelbrot.ui` | Explore the Apfelmännchen with live rendering, palettes, zoom, and pan. | [Launch and expected image](#mandelbrot) |
 | `script_median.ui` | Median and count above a threshold. | [Test data and waveform limitation](script_median.md) |
 | `script_conversions.ui` | Seven-by-seven scalar conversion matrix, decoding and array rejection in tabs. | [Inputs and expected results](script_conversions.md) |
 | `script_console_conversions.ui` | Scalar conversions and bounded console flooding. | [Expected results and timeout checks](script_console_conversions.md) |
@@ -23,8 +23,13 @@ From the repository root, open the panel in the desktop viewer.
 caQtDM -noMsg "$PWD/caQtDM_Tests/script_mandelbrot.ui"
 ```
 
-Click **Render Mandelbrot**. The camera shows the dark Mandelbrot set
-against a red-to-yellow exterior. caScript reports
-`internal://mandelbrotPixels = 49152 samples`. Click again to reproduce the
-same frame. The panel defines its own internal width, height, and pixel
-channels and requires no IOC.
+The first image renders automatically. Change **Maximale Iterationen** or
+choose **Klassisch**, **Feuer**, or **Graustufen** to redraw it. Use **Zoom**
+to magnify the fractal and enter new **Realteil** or **Imaginärteil** values
+to move the center. For example, use 64× and enter `-0.743644` and
+`0.131826` to explore a boundary. Press Enter to apply each coordinate.
+
+**Ansicht zurücksetzen** restores the original center and 1× zoom. caScript
+computes each 256 × 192 frame and publishes it as an internal RGB Char
+waveform. caCamera holds the previous frame while a new one is calculated.
+The panel requires no IOC.
