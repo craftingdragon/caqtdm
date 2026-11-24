@@ -65,6 +65,7 @@ private slots:
     void utf8DecodingPreservesInputSnapshot();
     void inputReconfigurationClearsSnapshot();
     void outputsAreResetBetweenRuns();
+    void scriptBindingsSurviveModifiedGlobals();
     void failedScriptDiscardsOutputs_data();
     void failedScriptDiscardsOutputs();
     void invalidOutputJsonPreservesConfiguration();

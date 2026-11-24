@@ -423,6 +423,31 @@ void TestCaScript::outputsAreResetBetweenRuns()
     QCOMPARE(values.count(), 1);
 }
 
+void TestCaScript::scriptBindingsSurviveModifiedGlobals()
+{
+    caScript widget;
+    widget.setInputChannels({{"source", "__proto__"}});
+    widget.setOutputChannels({{"internal://target", "__proto__"}});
+    widget.updateInputValue(0, 41);
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+    widget.setScript("this.saved = inputs['__proto__'].value;"
+                     "Object.create = null; Object.prototype.hasOwnProperty = null;"
+                     "outputs['__proto__'].value = this.saved;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(outputs.count(), 1);
+    QCOMPARE(outputs.last().first().toMap().value("__proto__").toInt(), 41);
+
+    widget.setScript("outputs['__proto__'].value = this.saved + inputs['__proto__'].convert(EpicsType.Long) - 40;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(outputs.count(), 2);
+    QCOMPARE(outputs.last().first().toMap().value("__proto__").toInt(), 42);
+}
+
 void TestCaScript::failedScriptDiscardsOutputs_data()
 {
     QTest::addColumn<QString>("script");

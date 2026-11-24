@@ -47,6 +47,13 @@
 #include <limits>
 
 namespace {
+QJSValue newDictionary(QJSEngine *engine)
+{
+    QJSValue dictionary = engine->newObject();
+    dictionary.setPrototype(QJSValue(QJSValue::NullValue));
+    return dictionary;
+}
+
 QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value)
 {
     if (value.userType() != QMetaType::QVariantList && value.userType() != QMetaType::QStringList)
@@ -181,40 +188,22 @@ public slots:
             if (!m_engine) m_engine = new QJSEngine(this);
             m_engine->setInterrupted(m_interruptRequested);
         }
+        if (!m_runScript.isCallable()) initializeBindings();
         m_console->reset();
-        QJSValue consoleFactory = m_engine->evaluate(QStringLiteral(
-            "(function(sink) { function text(args) { return Array.prototype.map.call(args, String).join(' '); }"
-            "return {log: function() { sink.log(text(arguments)); },"
-            "warn: function() { sink.warn(text(arguments)); },"
-            "error: function() { sink.error(text(arguments)); }}; })"));
-        m_engine->globalObject().setProperty(QStringLiteral("console"),
-            consoleFactory.call({m_engine->newQObject(m_console)}));
-        QJSValue types = m_engine->newObject();
+        const QJSValue console = m_consoleFactory.call({m_engine->newQObject(m_console)});
+        QJSValue types = newDictionary(m_engine);
         const QMetaEnum typeEnum = QMetaEnum::fromType<caScript::EpicsType>();
         for (int i = 0; i < typeEnum.keyCount(); ++i) {
             types.setProperty(QString::fromLatin1(typeEnum.key(i)), typeEnum.value(i));
         }
-        m_engine->globalObject().setProperty(QStringLiteral("EpicsType"), types);
-        QJSValue scriptInputs = m_engine->toScriptValue(inputs);
-        QJSValue byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
-        QJSValue decodedTextFunction = m_engine->evaluate(QStringLiteral(
-            "(function(text) { return function() { return text; }; })"));
-        QJSValue conversionFunction = m_engine->evaluate(QStringLiteral(
-            "(function(results) { return function(type) {\n"
-            "if (typeof type !== 'number' || !Object.prototype.hasOwnProperty.call(results, type))\n"
-            "    throw new TypeError('Unknown EPICS conversion type');\n"
-            "const result = results[type];\n"
-            "if (result.error !== undefined) throw new RangeError(result.error);\n"
-            "return result.value; }; })"));
+        QJSValue scriptInputs = newDictionary(m_engine);
         for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
             const QVariantMap channel = it.value().toMap();
-            QJSValue scriptChannel = scriptInputs.property(it.key());
+            QJSValue scriptChannel = newDictionary(m_engine);
             for (auto property = channel.constBegin(); property != channel.constEnd(); ++property) {
-                if (property.value().userType() == QMetaType::QVariantList
-                    || property.value().userType() == QMetaType::QStringList) {
-                    scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value()));
-                }
+                scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value()));
             }
+            scriptInputs.setProperty(it.key(), scriptChannel);
             if (channel.contains(QStringLiteral("value"))) {
                 // Convert the snapshot in C++; expose only the captured results to JavaScript.
                 QVariantMap conversions;
@@ -223,7 +212,7 @@ public slots:
                     conversions.insert(QString::number(type), scalarConversion(channel.value(QStringLiteral("value")), type));
                 }
                 scriptChannel.setProperty(QStringLiteral("convert"),
-                                          conversionFunction.call({m_engine->toScriptValue(conversions)}));
+                                          m_conversionFunction.call({m_engine->toScriptValue(conversions)}));
             }
             if (!channel.contains(QStringLiteral("rawBytes"))) continue;
             const QByteArray bytes = channel.value(QStringLiteral("rawBytes")).toByteArray();
@@ -231,31 +220,26 @@ public slots:
             for (int i = 0; i < bytes.size(); ++i) {
                 array.setProperty(i, static_cast<unsigned char>(bytes.at(i)));
             }
-            scriptChannel.setProperty(QStringLiteral("rawBytes"), byteArrayConstructor.callAsConstructor({array}));
+            scriptChannel.setProperty(QStringLiteral("rawBytes"), m_byteArrayConstructor.callAsConstructor({array}));
             // Decode the original snapshot in C++, independently of the displayed value.
             scriptChannel.setProperty(QStringLiteral("fromLatin1"),
-                                      decodedTextFunction.call({QJSValue(QString::fromLatin1(bytes))}));
+                                      m_decodedTextFunction.call({QJSValue(QString::fromLatin1(bytes))}));
             scriptChannel.setProperty(QStringLiteral("fromUtf8"),
-                                      decodedTextFunction.call({QJSValue(QString::fromUtf8(bytes))}));
+                                      m_decodedTextFunction.call({QJSValue(QString::fromUtf8(bytes))}));
         }
-        m_engine->globalObject().setProperty(QStringLiteral("inputs"), scriptInputs);
-        m_engine->globalObject().setProperty(QStringLiteral("outputs"), m_engine->toScriptValue(outputs));
-        const QString keys = QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(outputs.keys()))
-                                                   .toJson(QJsonDocument::Compact));
-        const QJSValue result = m_engine->evaluate(
-            QStringLiteral("(function() { try { (function() {\n") + script
-                + QStringLiteral("\n})(); const values = Object.create(null);\n"
-                                 "for (const key of ") + keys + QStringLiteral(
-                    ") { const channel = outputs[key];\n"
-                    "if (channel && Object.prototype.hasOwnProperty.call(channel, 'value'))\n"
-                    "values[key] = channel.value; }\n"
-                    "return {success: true, values: values};\n"
-                    "} catch (error) { var message = 'JavaScript exception'; var line = 0;\n"
-                    "try { message = String(error);\n"
-                    "if (error != null && typeof error.lineNumber === 'number') line = error.lineNumber;\n"
-                    "} catch (ignored) {}\n"
-                    "return {success: false, message: message, lineNumber: line}; } })()"),
+        QJSValue scriptOutputs = newDictionary(m_engine);
+        QJSValue keys = m_engine->newArray(outputs.size());
+        int index = 0;
+        for (auto it = outputs.constBegin(); it != outputs.constEnd(); ++it) {
+            keys.setProperty(index++, it.key());
+            scriptOutputs.setProperty(it.key(), newDictionary(m_engine));
+        }
+        const QJSValue function = m_engine->evaluate(
+            QStringLiteral("(function(inputs, outputs, console, EpicsType) {\n") + script
+                + QStringLiteral("\n})"),
             QStringLiteral("caScript"), 0);
+        const QJSValue result = function.isCallable()
+            ? m_runScript.call({function, scriptInputs, scriptOutputs, console, types, keys}) : function;
         const bool success = !result.isError() && result.property(QStringLiteral("success")).toBool();
         QString diagnostic;
         if (!success) {
@@ -273,9 +257,52 @@ signals:
     void message(int level, const QString &text);
 
 private:
+    void initializeBindings()
+    {
+        // Capture the host's built-ins before user code can replace them.
+        m_byteArrayConstructor = m_engine->globalObject().property(QStringLiteral("Uint8Array"));
+        m_consoleFactory = m_engine->evaluate(QStringLiteral(
+            "(function(asString) { return function(sink) {"
+            "function text(args) { let result = ''; for (let i = 0; i < args.length; ++i) {"
+            "if (i) result += ' '; result += asString(args[i]); } return result; }"
+            "return {log: function() { sink.log(text(arguments)); },"
+            "warn: function() { sink.warn(text(arguments)); },"
+            "error: function() { sink.error(text(arguments)); }}; }; })(String)"));
+        m_decodedTextFunction = m_engine->evaluate(QStringLiteral(
+            "(function(text) { return function() { return text; }; })"));
+        m_conversionFunction = m_engine->evaluate(QStringLiteral(
+            "(function(hasOwn, unknown, range) { return function(results) { return function(type) {\n"
+            "if (typeof type !== 'number' || !hasOwn(results, type))\n"
+            "    throw new unknown('Unknown EPICS conversion type');\n"
+            "const result = results[type];\n"
+            "if (hasOwn(result, 'error')) throw new range(result.error);\n"
+            "return result.value; }; }; })"
+            "(Function.prototype.call.bind(Object.prototype.hasOwnProperty), TypeError, RangeError)"));
+        m_runScript = m_engine->evaluate(QStringLiteral(
+            "(function(create, hasOwn, asString) {"
+            "return function(script, inputs, outputs, console, types, keys) {"
+            "try { script(inputs, outputs, console, types);"
+            "const values = create(null);"
+            "for (let i = 0; i < keys.length; ++i) {"
+            "const key = keys[i]; const channel = outputs[key];"
+            "if (channel && hasOwn(channel, 'value')) values[key] = channel.value; }"
+            "return {success: true, values: values};"
+            "} catch (error) { var message = 'JavaScript exception'; var line = 0;"
+            "try { message = asString(error);"
+            "if (error != null && typeof error.lineNumber === 'number') line = error.lineNumber;"
+            "} catch (ignored) {}"
+            "return {success: false, message: message, lineNumber: line}; } }; })"
+            "(Object.create, Function.prototype.call.bind(Object.prototype.hasOwnProperty), String)"));
+    }
+
     CaScriptConsole *m_console;
     QMutex m_mutex;
     QJSEngine *m_engine = nullptr;
+    QJSValue m_runScript;
+    QJSValue m_consoleFactory;
+    QJSValue m_decodedTextFunction;
+    QJSValue m_conversionFunction;
+    QJSValue m_byteArrayConstructor;
     bool m_stopping = false;
     bool m_interruptRequested = false;
 };
