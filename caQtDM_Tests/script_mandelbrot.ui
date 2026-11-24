@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>690</width>
-    <height>801</height>
+    <height>823</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -279,6 +279,74 @@
        </item>
       </layout>
      </item>
+     <item>
+      <layout class="QHBoxLayout" name="progressRow" stretch="0,1,0">
+       <item>
+        <widget class="QLabel" name="progressLabel">
+         <property name="text">
+          <string>Renderfortschritt</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caThermo" name="renderProgress">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>16</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>16</height>
+          </size>
+         </property>
+         <property name="foreground">
+          <color>
+           <red>57</red>
+           <green>125</green>
+           <blue>194</blue>
+          </color>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotRenderProgress</string>
+         </property>
+         <property name="direction">
+          <enum>caThermo::Right</enum>
+         </property>
+         <property name="look">
+          <enum>caThermo::noLabel</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caLineEdit" name="progressReadout">
+         <property name="maximumSize">
+          <size>
+           <width>64</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotRenderProgress</string>
+         </property>
+         <property name="unitsEnabled">
+          <bool>true</bool>
+         </property>
+         <property name="fontScaleMode">
+          <enum>caLineEdit::None</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
     </layout>
    </item>
    <item>
@@ -477,6 +545,28 @@
        </widget>
       </item>
       <item>
+       <widget class="genSoftPV" name="renderProgressDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotRenderProgress</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Long</enum>
+        </property>
+        <property name="value">
+         <string notr="true">0</string>
+        </property>
+        <property name="lopr">
+         <string notr="true">0</string>
+        </property>
+        <property name="hopr">
+         <string notr="true">100</string>
+        </property>
+        <property name="units">
+         <string notr="true">%</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="genSoftPV" name="renderRequestDefinition">
         <property name="variable">
          <string notr="true">mandelbrotRenderRequest</string>
@@ -523,7 +613,7 @@
          <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotImageClick","alias":"click"},{"channel":"internal://mandelbrotRenderRequest","alias":"request"}]</string>
         </property>
         <property name="outputChannels">
-         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"},{"channel":"internal://mandelbrotRenderProgress","alias":"progress"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
         </property>
         <property name="script">
          <string notr="true">const click = inputs.click.value;
@@ -577,7 +667,15 @@ if (!this.frame || this.frame.geometry !== geometry) {
 }
 
 const frame = this.frame;
-if (frame.publishedPalette === palette) return;
+const reportProgress = (percent) =&gt; {
+    if (percent === this.lastProgress) return;
+    outputs.progress.value = percent;
+    this.lastProgress = percent;
+};
+if (frame.publishedPalette === palette) {
+    reportProgress(100);
+    return;
+}
 
 // Keep the pixel loop across calls so the engine can optimize it as it warms up.
 if (!this.computePixels) {
@@ -619,7 +717,10 @@ while (frame.row &lt; rows &amp;&amp; Date.now() &lt; deadline) {
         frame.column = 0;
     }
 }
-if (frame.row &lt; rows || Date.now() &gt;= deadline) return;
+if (frame.row &lt; rows || Date.now() &gt;= deadline) {
+    reportProgress(Math.floor(90 * (frame.row + frame.column / width) / rows));
+    return;
+}
 
 if (!frame.rgb || frame.rgb.palette !== palette) {
     const stops = [
@@ -652,7 +753,11 @@ while (rgb.row &lt; height &amp;&amp; Date.now() &lt; deadline) {
         rgb.pixels[pixel++] = rgb.colors[color + 2];
     }
 }
-if (rgb.row &lt; height) return;
+// Reserve the last percent for publication after the camera has the dimensions.
+if (rgb.row &lt; height) {
+    reportProgress(90 + Math.floor(9 * rgb.row / height));
+    return;
+}
 
 // caCamera receives dimensions and image data on separate monitors. Let the
 // previous frame reach the camera, then publish dimensions before the next frame.
@@ -663,6 +768,7 @@ if (!this.camera) {
 }
 const camera = this.camera;
 if (camera.width !== width || camera.height !== height) {
+    reportProgress(99);
     if (now - camera.lastImage &lt; 200) return;
     outputs.cameraWidth.value = camera.width = width;
     outputs.cameraHeight.value = camera.height = height;
@@ -670,9 +776,13 @@ if (camera.width !== width || camera.height !== height) {
     return;
 }
 if (now &lt; camera.readyAfter || inputs.cameraWidth.value !== width ||
-    inputs.cameraHeight.value !== height) return;
+    inputs.cameraHeight.value !== height) {
+    reportProgress(99);
+    return;
+}
 
 outputs.image.value = rgb.pixels.buffer;
+reportProgress(100);
 this.publishedView = {real, imaginary, zoom};
 camera.lastImage = now;
 frame.publishedPalette = palette;
@@ -720,6 +830,11 @@ outputs.imaginary.value = 0;</string>
    <class>caSlider</class>
    <extends>QWidget</extends>
    <header>caslider.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caThermo</class>
+   <extends>QWidget</extends>
+   <header>cathermo.h</header>
   </customwidget>
   <customwidget>
    <class>caChoice</class>
