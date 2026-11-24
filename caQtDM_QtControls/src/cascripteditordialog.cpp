@@ -42,7 +42,44 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#ifdef CAQTDM_SCRIPT_PARSER_DIAGNOSTICS
+#include <private/qqmljsengine_p.h>
+#include <private/qqmljslexer_p.h>
+#include <private/qqmljsparser_p.h>
+#endif
+
 namespace {
+
+struct SyntaxLocation
+{
+    QString message;
+    int offset = -1;
+    int length = 0;
+};
+
+SyntaxLocation locateParseError(const QString &script, const QStringList &parameters)
+{
+#ifdef CAQTDM_SCRIPT_PARSER_DIAGNOSTICS
+    // Match the function expression that Qt compiles for the Function constructor.
+    const QString prefix = QStringLiteral("function anonymous(") + parameters.join(QStringLiteral(", "))
+        + QStringLiteral("\n){");
+    QQmlJS::Engine engine;
+    QQmlJS::Lexer lexer(&engine);
+    lexer.setCode(prefix + script + QStringLiteral("\n}"), 1, false);
+    QQmlJS::Parser parser(&engine);
+    if (!parser.parseExpression()) {
+        const auto diagnostic = parser.diagnosticMessage();
+        if (!diagnostic.message.isEmpty()) {
+            return {diagnostic.message, qBound(0, int(diagnostic.loc.offset) - int(prefix.size()),
+                                              int(script.size())), int(diagnostic.loc.length)};
+        }
+    }
+#else
+    Q_UNUSED(script)
+    Q_UNUSED(parameters)
+#endif
+    return {};
+}
 
 class ScriptEditor : public QPlainTextEdit
 {
@@ -249,35 +286,62 @@ bool CaScriptEditorDialog::checkSyntax()
     m_checkTimer->stop();
     m_editor->setExtraSelections({});
 
+    const QString script = source();
+    const QStringList parameters{QStringLiteral("inputs"), QStringLiteral("outputs"),
+                                 QStringLiteral("console"), QStringLiteral("EpicsType")};
+    QJSValueList arguments;
+    for (const QString &parameter : parameters) arguments.append(QJSValue(parameter));
+    arguments.append(QJSValue(script));
+
     QJSEngine engine;
     QJSValue constructor = engine.globalObject().property(QStringLiteral("Function"));
-    const QJSValue result = constructor.callAsConstructor({
-        QJSValue(QStringLiteral("inputs")), QJSValue(QStringLiteral("outputs")),
-        QJSValue(QStringLiteral("console")), QJSValue(QStringLiteral("EpicsType")),
-        QJSValue(source())
-    });
+    const QJSValue result = constructor.callAsConstructor(arguments);
     if (result.isCallable()) {
         m_diagnostic->setText(tr("JavaScript syntax is valid."));
         return true;
     }
 
-    const QString message = result.isError() ? result.toString() : tr("JavaScript syntax check failed.");
-    // Function adds one source line before the body on Qt 5 and Qt 6.
-    const int line = result.property(QStringLiteral("lineNumber")).toInt() - 1;
-    if (line < 1 || line > m_editor->blockCount()) {
-        m_diagnostic->setText(message);
-        return false;
+    QString message = result.isError() ? result.toString() : tr("JavaScript syntax check failed.");
+    const SyntaxLocation location = locateParseError(script, parameters);
+    QTextCursor cursor(m_editor->document());
+    if (location.offset >= 0) {
+        cursor.setPosition(location.offset);
+        message = tr("Line %1, column %2: %3").arg(cursor.blockNumber() + 1)
+            .arg(cursor.positionInBlock() + 1).arg(location.message);
+    } else {
+        // Function adds one source line before the body on Qt 5 and Qt 6.
+        const int line = result.property(QStringLiteral("lineNumber")).toInt() - 1;
+        const QTextBlock block = m_editor->document()->findBlockByNumber(line - 1);
+        if (!block.isValid()) {
+            m_diagnostic->setText(message);
+            return false;
+        }
+        cursor.setPosition(block.position());
+        message = tr("Line %1: %2").arg(line).arg(message);
     }
+    m_diagnostic->setText(message);
 
-    m_diagnostic->setText(tr("Line %1: %2").arg(line).arg(message));
-    QTextEdit::ExtraSelection selection;
-    selection.cursor = QTextCursor(m_editor->document()->findBlockByNumber(line - 1));
-    selection.cursor.select(QTextCursor::LineUnderCursor);
-    selection.format.setBackground(QColor(211, 47, 47, 55));
-    selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-    selection.format.setUnderlineColor(QColor(211, 47, 47));
-    selection.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-    m_editor->setExtraSelections({selection});
+    // Use the same line tint and wavy underline as the 3D configuration editor.
+    QTextEdit::ExtraSelection line;
+    line.cursor = cursor;
+    line.format.setBackground(QColor(211, 47, 47, 45));
+    line.format.setProperty(QTextFormat::FullWidthSelection, true);
+
+    QTextEdit::ExtraSelection underline;
+    underline.cursor = cursor;
+    if (location.offset < 0) {
+        underline.cursor.select(QTextCursor::LineUnderCursor);
+    } else {
+        const int end = qMin(cursor.block().position() + cursor.block().length() - 1,
+                             location.offset + qMax(1, location.length));
+        underline.cursor.setPosition(end, QTextCursor::KeepAnchor);
+        if (!underline.cursor.hasSelection() && cursor.positionInBlock() > 0) {
+            underline.cursor.movePosition(QTextCursor::PreviousCharacter, QTextCursor::KeepAnchor);
+        }
+    }
+    underline.format.setUnderlineColor(QColor(QStringLiteral("#d32f2f")));
+    underline.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+    m_editor->setExtraSelections({line, underline});
     return false;
 }
 

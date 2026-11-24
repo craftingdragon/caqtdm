@@ -631,12 +631,11 @@ void TestCaScript::scriptEditorChecksSyntaxLiveWithoutRunning()
     QVERIFY(editor);
     QVERIFY(diagnostic);
     QVERIFY(check);
-    QVERIFY(diagnostic->text().contains(QStringLiteral("SyntaxError")));
-    QVERIFY(editor->extraSelections().isEmpty());
+    QVERIFY(!diagnostic->text().isEmpty());
 
     editor->setPlainText(QStringLiteral("// First line\nlet inputs = 2;"));
     QVERIFY(diagnostic->text().isEmpty());
-    QTRY_COMPARE(editor->extraSelections().size(), 1);
+    QTRY_COMPARE(editor->extraSelections().size(), 2);
     QCOMPARE(editor->extraSelections().first().cursor.blockNumber(), 1);
     QVERIFY(diagnostic->text().contains(QStringLiteral("Line 2")));
 
@@ -647,6 +646,27 @@ void TestCaScript::scriptEditorChecksSyntaxLiveWithoutRunning()
     QCOMPARE(finished.count(), 0);
     QCOMPARE(outputs.count(), 0);
     QVERIFY(form.fakeCursor()->widgetProperties.isEmpty());
+}
+
+void TestCaScript::scriptEditorHighlightsParserError()
+{
+    caScript widget;
+    widget.setScript(QStringLiteral("// 🌍\nconst café = ;\n"));
+    CaScriptEditorDialog dialog(&widget);
+    auto *editor = dialog.findChild<QPlainTextEdit *>(QStringLiteral("scriptEditor"));
+    auto *diagnostic = dialog.findChild<QLabel *>(QStringLiteral("scriptDiagnostic"));
+    QVERIFY(editor);
+    QVERIFY(diagnostic);
+    const auto selections = editor->extraSelections();
+    if (selections.isEmpty() && diagnostic->text() == QStringLiteral("SyntaxError: Parse error")) {
+        QSKIP("This Qt build exposes only the public JavaScript diagnostics.");
+    }
+    QCOMPARE(selections.size(), 2);
+    QCOMPARE(selections.first().cursor.blockNumber(), 1);
+    QVERIFY(selections.first().format.boolProperty(QTextFormat::FullWidthSelection));
+    QCOMPARE(selections.last().cursor.selectedText(), QStringLiteral(";"));
+    QCOMPARE(selections.last().format.underlineStyle(), QTextCharFormat::WaveUnderline);
+    QVERIFY(diagnostic->text().contains(QStringLiteral("Line 2, column 14")));
 }
 
 void TestCaScript::scriptEditorSavesOnlyTheTargetWidget()

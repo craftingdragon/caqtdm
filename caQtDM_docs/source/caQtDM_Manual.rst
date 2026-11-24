@@ -2805,9 +2805,9 @@ has no equivalent in MEDM
    its context menu. The editor highlights JavaScript syntax and checks it after
    a pause in typing. Use *Check Syntax* to check immediately. **OK** saves the
    script when the syntax is valid, and **Cancel** discards edits. The editor
-   compiles the draft for the syntax check without running it and marks the line
-   when Qt reports its location. Runtime errors are reported when the panel
-   runs the script.
+   compiles the draft for the syntax check without running it. Where Qt provides
+   a location, the editor shades the affected line and underlines the error.
+   Runtime errors are reported when the panel runs the script.
 
    **Properties**
 

@@ -179,6 +179,10 @@ XDR_HACK {
 }
 
 !MOBILE {
+    qtHaveModule(qml-private):exists($$[QT_INSTALL_HEADERS]/QtQml/$$[QT_VERSION]/QtQml/private/qqmljsparser_p.h) {
+        QT += qml-private
+        DEFINES += CAQTDM_SCRIPT_PARSER_DIAGNOSTICS
+    }
     SOURCES += src/cascripteditordialog.cpp
     HEADERS += src/cascripteditordialog.h
     SOURCES += src/cascriptdialog.cpp

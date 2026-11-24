@@ -76,6 +76,7 @@ private slots:
     void waveformSnapshotUsesJavaScriptArray();
     void scriptEditorOpensFromPreferredTaskAction();
     void scriptEditorChecksSyntaxLiveWithoutRunning();
+    void scriptEditorHighlightsParserError();
     void scriptEditorSavesOnlyTheTargetWidget();
     void channelDialogShowsConfigurationAndCancelPreservesIt_data();
     void channelDialogShowsConfigurationAndCancelPreservesIt();
