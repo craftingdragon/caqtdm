@@ -51,6 +51,7 @@ private slots:
     void busyMonitorTriggersAreWarnedAndNotQueued();
     void timeoutsDiscardOutputsAndDisableAfterFiveConsecutiveRuns();
     void slowSuccessfulScriptOnlyWarns();
+    void deadlineSurvivesGuiStall();
     void consoleMessagesPreserveLevelsAndSuccess();
     void consoleFloodIsBoundedAndStillTimesOut();
     void debugDisplayCanBeToggledWithoutLosingLastOutput();

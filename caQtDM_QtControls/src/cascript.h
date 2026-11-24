@@ -140,8 +140,7 @@ private:
     bool m_channelBindingsFrozen = false;
     QTimer *m_triggerTimer;
     QTimer *m_warningTimer;
-    QTimer *m_timeoutTimer;
-    bool m_timedOut = false;
+    bool m_slowWarningEmitted = false;
     int m_consecutiveTimeouts = 0;
     bool m_executionDisabled = false;
     QElapsedTimer m_lastExecution;

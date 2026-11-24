@@ -43,10 +43,88 @@
 #include <QPainter>
 #include <QApplication>
 #include <QTimer>
+#include <chrono>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <thread>
 #include <cmath>
 #include <limits>
 
 namespace {
+using ScriptClock = std::chrono::steady_clock;
+constexpr auto warningAfter = std::chrono::milliseconds(100);
+constexpr auto timeoutAfter = std::chrono::milliseconds(1000);
+
+// One thread services deadlines for all widgets. A worker unregisters its engine
+// under the same lock used to interrupt it, before it can finish or be destroyed.
+class CaScriptWatchdog
+{
+public:
+    CaScriptWatchdog() : m_thread([this]() { watch(); }) {}
+
+    ~CaScriptWatchdog()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stopping = true;
+        }
+        m_changed.notify_one();
+        m_thread.join();
+    }
+
+    static CaScriptWatchdog &instance()
+    {
+        static CaScriptWatchdog watchdog;
+        return watchdog;
+    }
+
+    void arm(ScriptClock::time_point deadline, QJSEngine *engine)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_deadlines.emplace(deadline, engine);
+        m_changed.notify_one();
+    }
+
+    void disarm(ScriptClock::time_point deadline, QJSEngine *engine)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto range = m_deadlines.equal_range(deadline);
+        for (auto it = range.first; it != range.second; ++it) {
+            if (it->second == engine) {
+                m_deadlines.erase(it);
+                m_changed.notify_one();
+                break;
+            }
+        }
+    }
+
+private:
+    void watch()
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        while (!m_stopping) {
+            if (m_deadlines.empty()) {
+                m_changed.wait(lock);
+                continue;
+            }
+            const auto deadline = m_deadlines.begin()->first;
+            if (ScriptClock::now() < deadline) {
+                m_changed.wait_until(lock, deadline);
+                continue;
+            }
+            m_deadlines.begin()->second->setInterrupted(true);
+            m_deadlines.erase(m_deadlines.begin());
+        }
+    }
+
+    std::mutex m_mutex;
+    std::condition_variable m_changed;
+    std::multimap<ScriptClock::time_point, QJSEngine *> m_deadlines;
+    bool m_stopping = false;
+    std::thread m_thread;
+};
+
 QJSValue newDictionary(QJSEngine *engine)
 {
     QJSValue dictionary = engine->newObject();
@@ -54,14 +132,15 @@ QJSValue newDictionary(QJSEngine *engine)
     return dictionary;
 }
 
-QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value)
+QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value, ScriptClock::time_point deadline)
 {
     if (value.userType() != QMetaType::QVariantList && value.userType() != QMetaType::QStringList)
         return engine->toScriptValue(value);
     const QVariantList elements = value.toList();
     QJSValue array = engine->newArray(elements.size());
     for (int i = 0; i < elements.size(); ++i) {
-        array.setProperty(i, inputValueToScript(engine, elements.at(i)));
+        if ((i % 256) == 0 && ScriptClock::now() >= deadline) break;
+        array.setProperty(i, inputValueToScript(engine, elements.at(i), deadline));
     }
     return array;
 }
@@ -156,18 +235,10 @@ public:
         connect(m_console, &CaScriptConsole::message, this, &CaScriptWorker::message);
     }
 
-    void prepareExecution()
+    bool executionIsSlow()
     {
         QMutexLocker lock(&m_mutex);
-        m_interruptRequested = false;
-        if (m_engine) m_engine->setInterrupted(false);
-    }
-
-    void interrupt()
-    {
-        QMutexLocker lock(&m_mutex);
-        m_interruptRequested = true;
-        if (m_engine) m_engine->setInterrupted(true);
+        return m_active && ScriptClock::now() - m_started >= warningAfter;
     }
 
     void stop()
@@ -182,12 +253,30 @@ public:
 public slots:
     void execute(const QString &script, const QVariantMap &inputs, const QVariantMap &outputs)
     {
+        const auto started = ScriptClock::now();
+        const auto deadline = started + timeoutAfter;
         {
             QMutexLocker lock(&m_mutex);
             if (m_stopping) return;
             if (!m_engine) m_engine = new QJSEngine(this);
-            m_engine->setInterrupted(m_interruptRequested);
+            m_engine->setInterrupted(false);
+            m_started = started;
+            m_active = true;
         }
+        auto &watchdog = CaScriptWatchdog::instance();
+        watchdog.arm(deadline, m_engine);
+        const auto complete = [this, &watchdog, started, deadline](bool success, const QVariantMap &values,
+                                                                  const QString &diagnostic) {
+            const auto completed = ScriptClock::now();
+            watchdog.disarm(deadline, m_engine);
+            {
+                QMutexLocker lock(&m_mutex);
+                m_active = false;
+            }
+            const bool timedOut = completed >= deadline;
+            emit finished(success && !timedOut, timedOut ? QVariantMap() : values, diagnostic,
+                          timedOut, completed - started >= warningAfter);
+        };
         if (!m_runScript.isCallable()) initializeBindings();
         m_console->reset();
         const QJSValue console = m_consoleFactory.call({m_engine->newQObject(m_console)});
@@ -198,10 +287,14 @@ public slots:
         }
         QJSValue scriptInputs = newDictionary(m_engine);
         for (auto it = inputs.constBegin(); it != inputs.constEnd(); ++it) {
+            if (ScriptClock::now() >= deadline) {
+                complete(false, {}, {});
+                return;
+            }
             const QVariantMap channel = it.value().toMap();
             QJSValue scriptChannel = newDictionary(m_engine);
             for (auto property = channel.constBegin(); property != channel.constEnd(); ++property) {
-                scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value()));
+                scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value(), deadline));
             }
             scriptInputs.setProperty(it.key(), scriptChannel);
             if (channel.contains(QStringLiteral("value"))) {
@@ -218,6 +311,10 @@ public slots:
             const QByteArray bytes = channel.value(QStringLiteral("rawBytes")).toByteArray();
             QJSValue array = m_engine->newArray(bytes.size());
             for (int i = 0; i < bytes.size(); ++i) {
+                if ((i % 256) == 0 && ScriptClock::now() >= deadline) {
+                    complete(false, {}, {});
+                    return;
+                }
                 array.setProperty(i, static_cast<unsigned char>(bytes.at(i)));
             }
             scriptChannel.setProperty(QStringLiteral("rawBytes"), m_byteArrayConstructor.callAsConstructor({array}));
@@ -248,12 +345,22 @@ public slots:
             const int line = result.property(QStringLiteral("lineNumber")).toInt();
             if (line > 0) diagnostic = tr("%1 (line %2)").arg(diagnostic).arg(line);
         }
-        emit finished(success, success ? result.property(QStringLiteral("values")).toVariant().toMap()
-                                       : QVariantMap(), diagnostic);
+        QVariantMap values;
+        if (success) {
+            const QJSValue scriptValues = result.property(QStringLiteral("values"));
+            for (auto it = outputs.constBegin(); it != outputs.constEnd() && ScriptClock::now() < deadline; ++it) {
+                if (!scriptValues.hasOwnProperty(it.key())) continue;
+                const QJSValue output = scriptValues.property(it.key());
+                const bool scalar = output.isBool() || output.isNumber() || output.isString();
+                values.insert(it.key(), scalar ? output.toVariant() : QVariant());
+            }
+        }
+        complete(success, values, diagnostic);
     }
 
 signals:
-    void finished(bool success, const QVariantMap &values, const QString &diagnostic);
+    void finished(bool success, const QVariantMap &values, const QString &diagnostic,
+                  bool timedOut, bool slow);
     void message(int level, const QString &text);
 
 private:
@@ -304,25 +411,22 @@ private:
     QJSValue m_conversionFunction;
     QJSValue m_byteArrayConstructor;
     bool m_stopping = false;
-    bool m_interruptRequested = false;
+    ScriptClock::time_point m_started;
+    bool m_active = false;
 };
 
 caScript::caScript(QWidget *parent) : QWidget(parent), m_triggerTimer(new QTimer(this)),
-    m_warningTimer(new QTimer(this)), m_timeoutTimer(new QTimer(this))
+    m_warningTimer(new QTimer(this))
 {
     connect(m_triggerTimer, &QTimer::timeout, this, &caScript::executeScript);
     connect(this, &caScript::inputValueUpdated, this, &caScript::handleInputTrigger);
     m_warningTimer->setSingleShot(true);
-    m_timeoutTimer->setSingleShot(true);
     m_warningTimer->setTimerType(Qt::PreciseTimer);
-    m_timeoutTimer->setTimerType(Qt::PreciseTimer);
     connect(m_warningTimer, &QTimer::timeout, this, [this]() {
-        emit scriptWarning(tr("Script execution exceeded 100 ms."));
-    });
-    connect(m_timeoutTimer, &QTimer::timeout, this, [this]() {
-        m_timedOut = true;
-        m_worker->interrupt();
-        emit scriptError(tr("Script execution interrupted after the 1000 ms time limit."));
+        if (m_worker->executionIsSlow()) {
+            m_slowWarningEmitted = true;
+            emit scriptWarning(tr("Script execution exceeded 100 ms."));
+        }
     });
 }
 
@@ -330,7 +434,6 @@ caScript::~caScript()
 {
     m_triggerTimer->stop();
     m_warningTimer->stop();
-    m_timeoutTimer->stop();
     if (m_executionThread) {
         m_worker->stop();
         m_executionThread->quit();
@@ -375,11 +478,12 @@ void caScript::executeScript()
             else emit scriptInfo(text);
         });
         connect(m_worker, &CaScriptWorker::finished, this, [this](bool success, const QVariantMap &values,
-                                                              const QString &diagnostic) {
+                                                              const QString &diagnostic,
+                                                              bool timedOut, bool slow) {
             m_warningTimer->stop();
-            m_timeoutTimer->stop();
-            if (m_timedOut) {
-                success = false;
+            if (slow && !m_slowWarningEmitted) emit scriptWarning(tr("Script execution exceeded 100 ms."));
+            if (timedOut) {
+                emit scriptError(tr("Script execution interrupted after the 1000 ms time limit."));
                 if (++m_consecutiveTimeouts >= 5) {
                     m_executionDisabled = true;
                     m_triggerTimer->stop();
@@ -411,11 +515,9 @@ void caScript::executeScript()
     for (const InputChannel &output : m_outputChannels) {
         outputs.insert(output.alias.isEmpty() ? output.channel : output.alias, QVariantMap());
     }
-    m_worker->prepareExecution();
-    m_timedOut = false;
+    m_slowWarningEmitted = false;
     m_lastExecution.start();
     m_warningTimer->start(100);
-    m_timeoutTimer->start(1000);
     QMetaObject::invokeMethod(m_worker, "execute", Qt::QueuedConnection,
                               Q_ARG(QString, m_script), Q_ARG(QVariantMap, snapshot),
                               Q_ARG(QVariantMap, outputs));

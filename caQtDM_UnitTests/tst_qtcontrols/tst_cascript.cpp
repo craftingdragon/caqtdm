@@ -39,6 +39,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QThread>
 #include <QTableWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -1011,6 +1012,30 @@ void TestCaScript::slowSuccessfulScriptOnlyWarns()
     QTest::qWait(1000);
     QCOMPARE(warnings.count(), 1);
     QVERIFY(errors.isEmpty());
+}
+
+void TestCaScript::deadlineSurvivesGuiStall()
+{
+    caScript widget;
+    widget.setOutputChannels({{"internal://target", "result"}});
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy outputs(&widget, &caScript::outputValuesReady);
+
+    // The first console message confirms that the worker entered the script.
+    connect(&widget, &caScript::scriptInfo, &widget, [](const QString &) { QThread::msleep(1400); });
+    widget.setScript("const start = Date.now(); console.log('running');"
+                     "while (Date.now() - start < 1150) {} outputs.result.value = 1;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(!finished.last().first().toBool());
+    QVERIFY(outputs.isEmpty());
+
+    widget.setScript("console.log('running'); outputs.result.value = 2;");
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(outputs.count(), 1);
+    QCOMPARE(outputs.last().first().toMap().value("result").toInt(), 2);
 }
 
 void TestCaScript::closingBusyWidgetLeavesOtherWidgetResponsive()
