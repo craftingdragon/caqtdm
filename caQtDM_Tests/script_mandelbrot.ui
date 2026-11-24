@@ -7,15 +7,18 @@
     <x>0</x>
     <y>0</y>
     <width>690</width>
-    <height>778</height>
+    <height>801</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Mandelbrot-Menge · Apfelmännchen</string>
   </property>
-  <layout class="QVBoxLayout" name="panelLayout" stretch="1,0,0">
+  <layout class="QVBoxLayout" name="panelLayout" stretch="1,0,0,0">
    <item>
     <widget class="caCamera" name="mandelbrotCamera">
+     <property name="imageClickChannel">
+      <string notr="true">internal://mandelbrotImageClick</string>
+     </property>
      <property name="channelData" stdset="0">
       <string notr="true">internal://mandelbrotPixels.{"caqtdm_monitor":{"maxdisplayrate":50}}</string>
      </property>
@@ -42,6 +45,13 @@
      </property>
      <property name="maxLevel">
       <string notr="true">255</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="zoomHint">
+     <property name="text">
+      <string>Ins Bild klicken, um den Zoom-Mittelpunkt zu setzen.</string>
      </property>
     </widget>
    </item>
@@ -443,6 +453,19 @@
        </widget>
       </item>
       <item>
+       <widget class="genSoftPV" name="imageClickDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotImageClick</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::String</enum>
+        </property>
+        <property name="value">
+         <string notr="true">none</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="caScript" name="mandelbrotScript">
         <property name="executionMode">
          <enum>caScript::DataDriven</enum>
@@ -454,13 +477,26 @@
          <number>50</number>
         </property>
         <property name="channels">
-         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotResolution","alias":"resolution"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotResolution","alias":"resolution"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"},{"channel":"internal://mandelbrotImageClick","alias":"click"}]</string>
         </property>
         <property name="outputChannels">
-         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
         </property>
         <property name="script">
-         <string notr="true">const widths = [256, 640, 1280];
+         <string notr="true">const click = inputs.click.value;
+if (click !== this.lastClick) {
+    this.lastClick = click;
+    const point = click.split(",");
+    const view = this.publishedView;
+    if (view &amp;&amp; point.length === 3) {
+        // Convert the selected point in the last published image, even if a new frame is rendering.
+        outputs.real.value = view.real + (Number(point[1]) - 0.5) * 3.2 / view.zoom;
+        outputs.imaginary.value = view.imaginary + (0.5 - Number(point[2])) * 2.4 / view.zoom;
+        return;
+    }
+}
+
+const widths = [256, 640, 1280];
 const width = widths[inputs.resolution.value];
 const height = width * 3 / 4;
 const iterations = inputs.iterations.value;
@@ -579,6 +615,7 @@ if (now &lt; camera.readyAfter || inputs.cameraWidth.value !== width ||
     inputs.cameraHeight.value !== height) return;
 
 outputs.image.value = rgb.pixels.buffer;
+this.publishedView = {real, imaginary, zoom};
 camera.lastImage = now;
 frame.publishedPalette = palette;
 frame.rgb = null;</string>

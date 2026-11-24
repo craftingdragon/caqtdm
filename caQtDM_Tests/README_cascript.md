@@ -26,9 +26,10 @@ caQtDM -noMsg "$PWD/caQtDM_Tests/script_mandelbrot.ui"
 The first image renders automatically. Change **Maximale Iterationen** or
 choose **Klassisch**, **Feuer**, or **Graustufen** to redraw it. Select
 **256 × 192**, **640 × 480**, or **1280 × 960** under **Auflösung** to change
-the render size. The larger sizes take longer to calculate. Use **Zoom**
-to magnify the fractal and enter new **Realteil** or **Imaginärteil** values
-to move the center. For example, use 64× and enter `-0.743644` and
+the render size. The larger sizes take longer to calculate. Click a feature
+in the image to center the view on it, then use **Zoom** to magnify it. You
+can also enter **Realteil** and **Imaginärteil** to set the center precisely.
+For example, use 64× and enter `-0.743644` and
 `0.131826` to explore a boundary. Press Enter to apply each coordinate.
 
 **Ansicht zurücksetzen** restores the original center and 1× zoom. caScript
