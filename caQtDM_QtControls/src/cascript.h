@@ -102,6 +102,8 @@ public:
     QStringList outputConfigurationErrors() const;
 
     void freezeChannelBindings();
+    void updateInputSample(int index, const QVariantMap &metadata, const QVariant &value,
+                           const QVariant &rawBytes = QVariant());
 
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 

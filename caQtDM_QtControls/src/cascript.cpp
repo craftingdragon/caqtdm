@@ -394,6 +394,23 @@ void caScript::executeScript()
                               Q_ARG(QVariantMap, outputs));
 }
 
+void caScript::updateInputSample(int index, const QVariantMap &metadata, const QVariant &value,
+                                 const QVariant &rawBytes)
+{
+    if (index < 0 || index >= m_inputChannels.size()) return;
+    updateInputMetadata(index, metadata);
+    if (!metadata.value(QStringLiteral("connected")).toBool()) return;
+
+    if (rawBytes.isValid()) m_inputRawBytes.insert(index, rawBytes.toByteArray());
+    else m_inputRawBytes.remove(index);
+    if (value.isValid()) {
+        updateInputValue(index, value);
+    } else {
+        m_inputValues.remove(index);
+        m_readyInputs.remove(index);
+    }
+}
+
 void caScript::updateInputValue(int index, const QVariant &value)
 {
     if (index >= 0 && index < m_inputChannels.size()) {

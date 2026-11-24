@@ -6685,8 +6685,11 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             && (data.edata.fieldtype == caSTRING || data.edata.nelm > 1 || data.edata.dimCount == 2);
         std::unique_lock<QMutex> bufferLock;
         if (readsBuffer) {
-            auto *channelMutex = static_cast<QMutex *>(data.mutex);
-            if (!channelMutex || indx < 0 || indx >= mutexKnobDataP->GetMutexKnobDataSize()) return;
+            if (indx < 0 || indx >= mutexKnobDataP->GetMutexKnobDataSize()) return;
+            const knobData monitor = mutexKnobDataP->GetMutexKnobData(indx);
+            if (monitor.index != indx || monitor.dispW != scriptWidget || monitor.mutex != data.mutex) return;
+            auto *channelMutex = static_cast<QMutex *>(monitor.mutex);
+            if (!channelMutex) return;
             bufferLock = std::unique_lock<QMutex>(*channelMutex, std::try_to_lock);
             if (!bufferLock.owns_lock()) {
                 // A synchronous publisher can still hold the mutex on this thread.
@@ -6704,7 +6707,8 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
             }
             const knobData current = mutexKnobDataP->GetMutexKnobData(indx);
             if (current.index != indx || current.dispW != scriptWidget || current.mutex != data.mutex
-                || current.edata.monitorCount != data.edata.monitorCount || current.edata.dataB != data.edata.dataB) return;
+                || current.edata.monitorCount != data.edata.monitorCount || current.edata.dataB != data.edata.dataB
+                || current.edata.connected != data.edata.connected) return;
         }
 
         QVariantMap metadata = {
@@ -6748,8 +6752,15 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 metadata.insert(QStringLiteral("label"), labels.at(int(data.edata.ivalue)));
             }
         }
-        scriptWidget->updateInputMetadata(data.specData[0], metadata);
-        if (data.edata.connected && (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
+        const int input = data.specData[0];
+        if (!data.edata.connected) {
+            scriptWidget->updateInputSample(input, metadata, QVariant());
+            return;
+        }
+
+        QVariant value;
+        QVariant rawBytes;
+        if ((data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT
                                     || data.edata.fieldtype == caINT || data.edata.fieldtype == caLONG
                                     || (data.edata.fieldtype == caCHAR && data.edata.dimCount == 2))
             && ((data.edata.nelm > 1 && data.edata.dimCount == 0)
@@ -6830,7 +6841,10 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                 if (data.edata.dimCount == 2) {
                     const int rows = data.edata.dim[0];
                     const int columns = data.edata.dim[1];
-                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) return;
+                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) {
+                        scriptWidget->updateInputSample(input, metadata, QVariant());
+                        return;
+                    }
                     QVariantList matrix;
                     matrix.reserve(rows);
                     for (int row = 0; row < rows; ++row) {
@@ -6838,53 +6852,55 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     }
                     values = matrix;
                 }
-                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
-                scriptWidget->updateInputValue(data.specData[0], values);
+                rawBytes = bytes;
+                value = values;
             }
-        } else if (data.edata.connected && data.edata.fieldtype == caSTRING
-                   && data.edata.nelm > 1 && data.edata.dimCount == 0
+        } else if (data.edata.fieldtype == caSTRING && data.edata.dimCount == 0
                    && data.edata.valueCount >= 0) {
-            bufferLock.unlock();
-            const QStringList texts = String.split(QChar(27));
-            QVariantList values;
-            for (int i = 0; i < qMin(data.edata.valueCount, int(texts.size())); ++i) {
-                values.append(texts.at(i));
-            }
-            scriptWidget->updateInputValue(data.specData[0], values);
-        } else if (data.edata.connected && data.edata.fieldtype == caCHAR
-                   && data.edata.nelm > 1 && data.edata.dimCount == 0) {
             QByteArray bytes;
-            {
-                const int count = data.edata.valueCount;
-                if (count < 0 || (count > 0 && (!data.edata.dataB || count > data.edata.dataSize))) return;
-                if (count > 0) {
-                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count);
-                }
+            const bool hasBuffer = data.edata.dataB && data.edata.dataSize > 0;
+            if (hasBuffer) {
+                bytes = QByteArray(static_cast<const char *>(data.edata.dataB), data.edata.dataSize);
+                const int terminator = bytes.indexOf('\0');
+                if (terminator >= 0) bytes.truncate(terminator);
             }
             bufferLock.unlock();
-            scriptWidget->updateInputRawBytes(data.specData[0], bytes);
-            scriptWidget->updateInputValue(data.specData[0], String);
-        } else if (data.edata.connected && data.edata.valueCount <= 1
-                   && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
-            if (data.edata.fieldtype == caDOUBLE || data.edata.fieldtype == caFLOAT) {
-                scriptWidget->updateInputValue(data.specData[0], data.edata.rvalue);
-            } else if (data.edata.fieldtype == caINT || data.edata.fieldtype == caCHAR
-                       || data.edata.fieldtype == caENUM) {
-                scriptWidget->updateInputValue(data.specData[0], static_cast<int>(data.edata.ivalue));
-            } else if (data.edata.fieldtype == caLONG) {
-                scriptWidget->updateInputValue(data.specData[0], static_cast<double>(data.edata.ivalue));
-            } else if (data.edata.fieldtype == caSTRING) {
-                QByteArray bytes;
-                if (data.edata.dataB && data.edata.dataSize > 0) {
-                    bytes = QByteArray(static_cast<const char *>(data.edata.dataB), data.edata.dataSize);
-                    const int terminator = bytes.indexOf('\0');
-                    if (terminator >= 0) bytes.truncate(terminator);
+            if (data.edata.nelm > 1) {
+                QVariantList values;
+                const int count = data.edata.valueCount;
+                const QList<QByteArray> texts = bytes.split(char(27));
+                if (count == 0 || (hasBuffer && count <= texts.size())) {
+                    for (int i = 0; i < count; ++i) values.append(QString::fromUtf8(texts.at(i)));
+                    value = values;
+                    rawBytes = bytes;
                 }
+            } else if (data.edata.valueCount <= 1) {
+                value = QString::fromUtf8(bytes);
+                rawBytes = bytes;
+            }
+        } else if (data.edata.fieldtype == caCHAR && data.edata.nelm > 1 && data.edata.dimCount == 0) {
+            const int count = data.edata.valueCount;
+            if (count >= 0 && (count == 0 || (data.edata.dataB && count <= data.edata.dataSize))) {
+                const QByteArray bytes(static_cast<const char *>(data.edata.dataB), count);
                 bufferLock.unlock();
-                scriptWidget->updateInputRawBytes(data.specData[0], bytes);
-                scriptWidget->updateInputValue(data.specData[0], String);
+                const int terminator = bytes.indexOf('\0');
+                rawBytes = bytes;
+                value = QString::fromUtf8(bytes.constData(), terminator < 0 ? bytes.size() : terminator);
+            }
+        } else if (data.edata.valueCount >= 0 && data.edata.valueCount <= 1
+                   && data.edata.nelm <= 1 && data.edata.dimCount == 0) {
+            switch (data.edata.fieldtype) {
+            case caDOUBLE:
+            case caFLOAT: value = data.edata.rvalue; break;
+            case caINT:
+            case caCHAR:
+            case caENUM: value = static_cast<int>(data.edata.ivalue); break;
+            case caLONG: value = static_cast<double>(data.edata.ivalue); break;
+            default: break;
             }
         }
+        if (bufferLock.owns_lock()) bufferLock.unlock();
+        scriptWidget->updateInputSample(input, metadata, value, rawBytes);
 
     } else if(caAlarmTree *alarmTree = qobject_cast<caAlarmTree *>(w)) {
         alarmTree->dataUpdate(String, data);
