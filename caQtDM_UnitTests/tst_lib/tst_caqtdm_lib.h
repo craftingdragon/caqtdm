@@ -73,6 +73,8 @@ private slots:
     void scriptWritesExistingScalar_data();
     void scriptWritesExistingScalar();
     void scriptKeepsInternalOutputBinding();
+    void scriptWritesInternalWaveform_data();
+    void scriptWritesInternalWaveform();
     void scriptInvalidWaveformClearsReadiness();
     void scriptReceivesUntruncatedText();
     void scriptSkipsInvalidOutputs_data();

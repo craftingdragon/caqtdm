@@ -2821,8 +2821,8 @@ has no equivalent in MEDM
 
    ``outputChannels``
       Output channels and optional aliases. Uses the same format as ``channels``.
-      Each target must already exist as a connected, writable scalar
-      ``internal://`` channel. Define it with :ref:`genSoftPV`.
+      Each target must already exist as a connected, writable
+      ``internal://`` scalar or numeric waveform. Define it with :ref:`genSoftPV`.
 
    ``triggerMode``
       Enum that selects when automatic execution is requested. The default is
@@ -2900,12 +2900,18 @@ has no equivalent in MEDM
       values outside the requested integer range.
 
    ``outputs[key].value``
-      Assign a number or string to request a write when the script finishes
+      Assign a number, string, or numeric array to request a write when the script finishes
       successfully. A channel with no assignment is skipped. Numeric targets
       require finite values within the target's range, with integer values
       rounded to the nearest integer, ties away from zero. Internal String
-      targets accept Latin-1 text without embedded NULs. Invalid or duplicate
-      targets and rejected values are reported in the message window.
+      targets accept Latin-1 text without embedded NULs. A waveform assignment
+      such as ``outputs.image.value = [0, 128, 255]`` requires a dense JavaScript
+      array of finite numbers and an internal Char, Int, Long, Float, or Double
+      waveform. The array must contain 1 to 1,048,576 samples and fit the
+      target's NELM. A valid assignment replaces the waveform and sets NORD
+      to the sample count. A rejected assignment leaves the waveform intact.
+      Invalid or duplicate targets and rejected values are reported in the
+      message window.
 
    ``console.log()``, ``console.warn()``, ``console.error()``
       Send informational, warning, and error messages to the caQtDM log and

@@ -7601,9 +7601,61 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
             continue;
         }
         const QString pv = channel.mid(11);
+        const QVariant value = values.value(key);
+        if (!value.isValid()) {
+            warn(channel, tr("expected a scalar or a dense array of finite numbers"));
+            continue;
+        }
+        const bool waveform = value.userType() == qMetaTypeId<QVector<double>>();
         knobData target;
-        if (!mutexKnobDataP->getInternalScalarTarget(widget, pv, target)) {
+        if (!mutexKnobDataP->getInternalOutputTarget(widget, pv, waveform, target)) {
             warn(channel, tr("target is not defined"));
+            continue;
+        }
+        if (waveform) {
+            auto samples = value.value<QVector<double>>();
+            if (pv.contains(QLatin1Char('.')) || !target.edata.connected || !target.edata.accessW
+                || target.edata.dimCount != 0 || target.edata.nelm <= 1) {
+                warn(channel, tr("target must be a connected writable one-dimensional waveform"));
+                continue;
+            }
+            if (samples.size() > target.edata.nelm) {
+                warn(channel, tr("waveform exceeds target NELM"));
+                continue;
+            }
+            double minimum, maximum;
+            switch (target.edata.fieldtype) {
+            case caDOUBLE: minimum = -std::numeric_limits<double>::max(); maximum = -minimum; break;
+            case caFLOAT: minimum = -std::numeric_limits<float>::max(); maximum = -minimum; break;
+            case caINT: minimum = -32768; maximum = 32767; break;
+            case caLONG: minimum = -2147483648.0; maximum = 2147483647; break;
+            case caCHAR: minimum = 0; maximum = 255; break;
+            default:
+                warn(channel, tr("unsupported waveform target type"));
+                continue;
+            }
+            const bool integer = target.edata.fieldtype != caDOUBLE && target.edata.fieldtype != caFLOAT;
+            bool valid = true;
+            for (double &sample : samples) {
+                if (integer) sample = round(sample);
+                if (!qIsFinite(sample) || sample < minimum || sample > maximum) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid) {
+                warn(channel, tr("waveform sample exceeds the target range"));
+                continue;
+            }
+            auto *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+            QByteArray object = widget->objectName().toLatin1();
+            char error[SMALL_STRING_LENGTH] = {};
+            if (!plugin || !plugin->pvSetWave(&target, nullptr, samples.data(), nullptr, nullptr,
+                                              nullptr, static_cast<int>(samples.size()), object.data(), error)) {
+                warn(channel, tr("internal plugin rejected the waveform write"));
+            } else {
+                widget->updateLastOutput(channel, tr("%1 samples").arg(samples.size()));
+            }
             continue;
         }
         if (!target.edata.connected || !target.edata.accessW || target.edata.nelm != 1
@@ -7611,7 +7663,6 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
             warn(channel, tr("target must be a connected writable scalar"));
             continue;
         }
-        const QVariant value = values.value(key);
         QByteArray text;
         double realValue = 0.0;
         int32_t integerValue = 0;

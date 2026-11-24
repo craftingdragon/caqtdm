@@ -530,7 +530,7 @@ QString MutexKnobData::internalPvKey(QString pv)
     return pv;
 }
 
-bool MutexKnobData::getInternalScalarTarget(QWidget *widget, const QString &pv, knobData &target)
+bool MutexKnobData::getInternalOutputTarget(QWidget *widget, const QString &pv, bool waveform, knobData &target)
 {
     QMutexLocker locker(&mutex);
     const knobData *fallback = nullptr;
@@ -540,8 +540,8 @@ bool MutexKnobData::getInternalScalarTarget(QWidget *widget, const QString &pv, 
             || internalPvKey(QString::fromLatin1(record.pv)) != pv) continue;
         // Prefer a usable widget-local monitor. Other panels may define the target.
         if (!fallback) fallback = &record;
-        if (!record.edata.connected || !record.edata.accessW || record.edata.nelm != 1
-            || record.edata.dimCount != 0) continue;
+        if (!record.edata.connected || !record.edata.accessW || record.edata.dimCount != 0
+            || (waveform ? record.edata.nelm <= 1 : record.edata.nelm != 1)) continue;
         if (record.dispW == widget) {
             target = record;
             return true;

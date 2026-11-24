@@ -883,6 +883,16 @@ static void writeStringsToDataB(knobData *kData, const QStringList &items)
     ptr[joined.size()] = '\0';
 }
 
+// Floating-point channels keep the full value in rvalue. Saturate the
+// integer mirror before converting so large finite samples remain valid.
+static long integerMirror(double value)
+{
+    if(qIsNaN(value)) return 0;
+    if(value <= static_cast<double>(LONG_MIN)) return LONG_MIN;
+    if(value >= static_cast<double>(LONG_MAX)) return LONG_MAX;
+    return static_cast<long>(value);
+}
+
 void InternalChannel::fillKnobData(knobData *kData) const
 {
     // a channel no genSoftPV has configured yet behaves like a disconnected
@@ -1008,7 +1018,7 @@ void InternalChannel::fillKnobData(knobData *kData) const
 
     case caFLOAT: {
         kData->edata.rvalue = (double) native.floatValue;
-        kData->edata.ivalue = (long) native.floatValue;
+        kData->edata.ivalue = integerMirror(native.floatValue);
         kData->edata.valueCount = nord;
         if(nelm > 1) {
             if(allocateDataB(kData, (qint64) nord * (qint64) sizeof(float))) {
@@ -1024,7 +1034,7 @@ void InternalChannel::fillKnobData(knobData *kData) const
     case caDOUBLE:
     default: {
         kData->edata.rvalue = native.doubleValue;
-        kData->edata.ivalue = (long) native.doubleValue;
+        kData->edata.ivalue = integerMirror(native.doubleValue);
         kData->edata.valueCount = nord;
         if(nelm > 1) {
             if(allocateDataB(kData, (qint64) nord * (qint64) sizeof(double))) {

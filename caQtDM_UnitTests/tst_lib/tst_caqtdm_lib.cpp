@@ -436,6 +436,71 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     }
 }
 
+void TestCaQtDM_Lib::scriptWritesInternalWaveform_data()
+{
+    QTest::addColumn<bool>("direct");
+    QTest::newRow("timed") << false;
+    QTest::newRow("direct") << true;
+}
+
+void TestCaQtDM_Lib::scriptWritesInternalWaveform()
+{
+    QFETCH(bool, direct);
+    m_mutexKnobData->UpdateMechanism(direct ? MutexKnobData::UpdateDirect : MutexKnobData::UpdateTimed);
+    genSoftPV source(m_parentAS);
+    source.setVariable("scriptWaveformOutput");
+    source.setDataType(genSoftPV::Char);
+    source.setNelm(4);
+    source.setValue("17;18;19;20");
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+    auto *scalar = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
+                                            QStringLiteral("scriptWaveformScalar"), "", "");
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    auto *data = m_mutexKnobData->getMutexKnobDataPV(&source, QStringLiteral("scriptWaveformOutput"));
+    QVERIFY(data);
+    QVERIFY(data->edata.connected);
+    QCOMPARE(data->edata.valueCount, 4);
+    bool delivered = false;
+    connect(m_mutexKnobData, &MutexKnobData::Signal_UpdateWidget, &source,
+            [&source, &delivered](int, QWidget *widget, const QString &, const QString &,
+                                  const QString &, const knobData &sample) {
+        if (widget != &source) return;
+        auto *lock = static_cast<QMutex *>(sample.mutex);
+        delivered = lock->tryLock();
+        if (delivered) lock->unlock();
+    });
+
+    caScript script(m_parentAS);
+    script.setOutputChannels({{"internal://scriptWaveformOutput.VAL", "image"},
+                              {"internal://scriptWaveformScalar", "scalar"}});
+    script.setScript("outputs.image.value = [0, 127.5, 255];");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+    QTRY_VERIFY(delivered);
+    QCOMPARE(data->edata.valueCount, 3);
+    QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 3), QByteArray::fromHex("0080ff"));
+    QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptWaveformOutput = 3 samples"));
+
+    const QStringList rejected = {
+        "[]", "[, 2]", "[[0]]", "[1, Infinity]", "[1, 256]", "[1, 2, 3, 4, 5]",
+        "new Array(1048577)", "Object.defineProperty([0], '0', {get: function() { return 1; }})"
+    };
+    for (const QString &value : rejected) {
+        script.setScript(QStringLiteral("outputs.image.value = %1; outputs.scalar.value = 42;").arg(value));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*output .* ignored: .*"));
+        const int count = finished.count();
+        script.executeScript();
+        QTRY_COMPARE(finished.count(), count + 1);
+        QVERIFY(finished.last().first().toBool());
+        QCOMPARE(data->edata.valueCount, 3);
+        QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 3), QByteArray::fromHex("0080ff"));
+        QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(scalar, QStringLiteral("scriptWaveformScalar"))->edata.rvalue, 42.0);
+    }
+}
+
 void TestCaQtDM_Lib::scriptKeepsInternalOutputBinding()
 {
     genSoftPV target(m_parentAS);

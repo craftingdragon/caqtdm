@@ -131,8 +131,9 @@ void InternalPlugin::publishIndex(InternalChannel *channel, int index)
     kData->edata.monitorCount++;
     kData->edata.actTimeMs = QDateTime::currentMSecsSinceEpoch();
     mutexknobdataP->SetMutexKnobData(kData->index, *kData);
-    mutexknobdataP->SetMutexKnobDataReceived(kData);
     if(lockable) mutexknobdataP->DataUnlock(kData);
+    // A direct display update may lock the buffer to read it.
+    mutexknobdataP->SetMutexKnobDataReceived(kData);
 }
 
 // where a channel definition comes from, for the duplicate definition message

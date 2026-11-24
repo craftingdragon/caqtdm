@@ -53,6 +53,7 @@
 
 namespace {
 using ScriptClock = std::chrono::steady_clock;
+constexpr int maxWaveformSamples = 1024 * 1024;
 constexpr auto warningAfter = std::chrono::milliseconds(100);
 constexpr auto timeoutAfter = std::chrono::milliseconds(1000);
 
@@ -352,7 +353,21 @@ public slots:
                 if (!scriptValues.hasOwnProperty(it.key())) continue;
                 const QJSValue output = scriptValues.property(it.key());
                 const bool scalar = output.isBool() || output.isNumber() || output.isString();
-                values.insert(it.key(), scalar ? output.toVariant() : QVariant());
+                QVariant value;
+                if (scalar) {
+                    value = output.toVariant();
+                } else if (output.isArray()) {
+                    const QJSValue snapshot = m_waveformSnapshot.call({output, QJSValue(maxWaveformSamples)});
+                    if (snapshot.isObject() && !snapshot.isError()) {
+                        const int count = snapshot.property(QStringLiteral("length")).toInt();
+                        QVector<double> samples;
+                        samples.reserve(count);
+                        for (int i = 0; i < count && ScriptClock::now() < deadline; ++i)
+                            samples.append(snapshot.property(static_cast<quint32>(i)).toNumber());
+                        if (samples.size() == count) value = QVariant::fromValue(samples);
+                    }
+                }
+                values.insert(it.key(), value);
             }
         }
         complete(success, values, diagnostic);
@@ -385,6 +400,20 @@ private:
             "if (hasOwn(result, 'error')) throw new range(result.error);\n"
             "return result.value; }; }; })"
             "(Function.prototype.call.bind(Object.prototype.hasOwnProperty), TypeError, RangeError)"));
+        m_waveformSnapshot = m_engine->evaluate(QStringLiteral(
+            "(function(create, descriptor, hasOwn, isFinite) { return function(array, maximum) {"
+            "try {"
+            "const length = array.length;"
+            "if (typeof length !== 'number' || length !== (length | 0) || length < 1 || length > maximum) return;"
+            "const snapshot = create(null); snapshot.length = length;"
+            "for (let i = 0; i < length; ++i) {"
+            "const element = descriptor(array, i);"
+            "if (!element || !hasOwn(element, 'value') || !isFinite(element.value)) return;"
+            "snapshot[i] = element.value;"
+            "} return snapshot;"
+            "} catch (ignored) {}"
+            "}; })(Object.create, Object.getOwnPropertyDescriptor,"
+            "Function.prototype.call.bind(Object.prototype.hasOwnProperty), Number.isFinite)"));
         m_runScript = m_engine->evaluate(QStringLiteral(
             "(function(create, hasOwn, asString) {"
             "return function(script, inputs, outputs, console, types, keys) {"
@@ -406,6 +435,7 @@ private:
     QMutex m_mutex;
     QJSEngine *m_engine = nullptr;
     QJSValue m_runScript;
+    QJSValue m_waveformSnapshot;
     QJSValue m_consoleFactory;
     QJSValue m_decodedTextFunction;
     QJSValue m_conversionFunction;
