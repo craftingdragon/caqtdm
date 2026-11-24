@@ -51,7 +51,7 @@
    <item>
     <widget class="QLabel" name="zoomHint">
      <property name="text">
-      <string>Ins Bild klicken, um den Zoom-Mittelpunkt zu setzen.</string>
+      <string>Ins Bild klicken, um den Zoom-Mittelpunkt zu setzen. Mit Rendern die Einstellungen anwenden.</string>
      </property>
     </widget>
    </item>
@@ -262,11 +262,22 @@
       </layout>
      </item>
      <item>
-      <widget class="QPushButton" name="resetView">
-       <property name="text">
-        <string>Ansicht zurücksetzen</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="viewActions">
+       <item>
+        <widget class="QPushButton" name="resetView">
+         <property name="text">
+          <string>Ansicht zurücksetzen</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="renderView">
+         <property name="text">
+          <string>Rendern</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
     </layout>
    </item>
@@ -466,6 +477,38 @@
        </widget>
       </item>
       <item>
+       <widget class="genSoftPV" name="renderRequestDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotRenderRequest</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::String</enum>
+        </property>
+        <property name="value">
+         <string notr="true">[0,200,0,1,-0.6,0]</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="caScript" name="requestRender">
+        <property name="executionMode">
+         <enum>caScript::DataDriven</enum>
+        </property>
+        <property name="channels">
+         <string notr="true">[{"channel":"internal://mandelbrotResolution.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"resolution"},{"channel":"internal://mandelbrotIterations.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"iterations"},{"channel":"internal://mandelbrotPalette.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"palette"},{"channel":"internal://mandelbrotZoom.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"zoom"},{"channel":"internal://mandelbrotReal.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"real"},{"channel":"internal://mandelbrotImaginary.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"imaginary"}]</string>
+        </property>
+        <property name="outputChannels">
+         <string notr="true">[{"channel":"internal://mandelbrotRenderRequest","alias":"request"}]</string>
+        </property>
+        <property name="script">
+         <string notr="true">outputs.request.value = JSON.stringify([
+    inputs.resolution.value, inputs.iterations.value, inputs.palette.value,
+    inputs.zoom.value, inputs.real.value, inputs.imaginary.value
+]);</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="caScript" name="mandelbrotScript">
         <property name="executionMode">
          <enum>caScript::DataDriven</enum>
@@ -477,7 +520,7 @@
          <number>50</number>
         </property>
         <property name="channels">
-         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotResolution","alias":"resolution"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"},{"channel":"internal://mandelbrotImageClick","alias":"click"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotImageClick","alias":"click"},{"channel":"internal://mandelbrotRenderRequest","alias":"request"}]</string>
         </property>
         <property name="outputChannels">
          <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
@@ -496,14 +539,17 @@ if (click !== this.lastClick) {
     }
 }
 
+// The button publishes all six settings together. Later edits are pending
+// until the next request, even while this frame is still rendering.
+const request = inputs.request.value;
+if (request !== this.lastRequest) {
+    this.settings = JSON.parse(request);
+    this.lastRequest = request;
+}
+const [resolution, iterations, palette, zoom, real, imaginary] = this.settings;
 const widths = [256, 640, 1280];
-const width = widths[inputs.resolution.value];
+const width = widths[resolution];
 const height = width * 3 / 4;
-const iterations = inputs.iterations.value;
-const palette = inputs.palette.value;
-const zoom = inputs.zoom.value;
-const real = inputs.real.value;
-const imaginary = inputs.imaginary.value;
 const geometry = [width, height, iterations, zoom, real, imaginary].join(',');
 const step = 3.2 / (width * zoom);
 const colorScale = 225 / Math.log(iterations);
@@ -681,6 +727,12 @@ outputs.imaginary.value = 0;</string>
  </customwidgets>
  <resources/>
  <connections>
+  <connection>
+   <sender>renderView</sender>
+   <signal>clicked()</signal>
+   <receiver>requestRender</receiver>
+   <slot>executeScript()</slot>
+  </connection>
   <connection>
    <sender>resetView</sender>
    <signal>clicked()</signal>
