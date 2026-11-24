@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>690</width>
-    <height>735</height>
+    <height>778</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,13 +17,13 @@
    <item>
     <widget class="caCamera" name="mandelbrotCamera">
      <property name="channelData" stdset="0">
-      <string notr="true">internal://mandelbrotPixels</string>
+      <string notr="true">internal://mandelbrotPixels.{"caqtdm_monitor":{"maxdisplayrate":50}}</string>
      </property>
      <property name="channelWidth" stdset="0">
-      <string notr="true">internal://mandelbrotWidth</string>
+      <string notr="true">internal://mandelbrotWidth.{"caqtdm_monitor":{"maxdisplayrate":50}}</string>
      </property>
      <property name="channelHeight" stdset="0">
-      <string notr="true">internal://mandelbrotHeight</string>
+      <string notr="true">internal://mandelbrotHeight.{"caqtdm_monitor":{"maxdisplayrate":50}}</string>
      </property>
      <property name="simpleZoomedView">
       <bool>true</bool>
@@ -117,6 +117,33 @@
         <enum>caChoice::Column</enum>
        </property>
       </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="resolutionRow">
+       <item>
+        <widget class="QLabel" name="resolutionLabel">
+         <property name="text">
+          <string>Auflösung</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="caChoice" name="resolution">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>34</height>
+          </size>
+         </property>
+         <property name="channel">
+          <string notr="true">internal://mandelbrotResolution</string>
+         </property>
+         <property name="stackingMode">
+          <enum>caChoice::Column</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
      <item>
       <layout class="QHBoxLayout" name="zoomRow" stretch="0,1,0,0">
@@ -280,7 +307,7 @@
          <double>0.0</double>
         </property>
         <property name="nelm">
-         <number>147459</number>
+         <number>3686403</number>
         </property>
         <property name="nord">
          <number>147459</number>
@@ -396,6 +423,26 @@
        </widget>
       </item>
       <item>
+       <widget class="genSoftPV" name="resolutionDefinition">
+        <property name="variable">
+         <string notr="true">mandelbrotResolution</string>
+        </property>
+        <property name="dataType">
+         <enum>genSoftPV::Enum</enum>
+        </property>
+        <property name="value">
+         <string notr="true">0</string>
+        </property>
+        <property name="enumStrings">
+         <stringlist>
+          <string>256 x 192</string>
+          <string>640 x 480</string>
+          <string>1280 x 960</string>
+         </stringlist>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="caScript" name="mandelbrotScript">
         <property name="executionMode">
          <enum>caScript::DataDriven</enum>
@@ -407,14 +454,15 @@
          <number>50</number>
         </property>
         <property name="channels">
-         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"width"},{"channel":"internal://mandelbrotHeight","alias":"height"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotResolution","alias":"resolution"},{"channel":"internal://mandelbrotIterations","alias":"iterations"},{"channel":"internal://mandelbrotPalette","alias":"palette"},{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
         </property>
         <property name="outputChannels">
-         <string notr="true">[{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotWidth","alias":"cameraWidth"},{"channel":"internal://mandelbrotHeight","alias":"cameraHeight"},{"channel":"internal://mandelbrotPixels","alias":"image"}]</string>
         </property>
         <property name="script">
-         <string notr="true">const width = inputs.width.value;
-const height = inputs.height.value;
+         <string notr="true">const widths = [256, 640, 1280];
+const width = widths[inputs.resolution.value];
+const height = width * 3 / 4;
 const iterations = inputs.iterations.value;
 const palette = inputs.palette.value;
 const zoom = inputs.zoom.value;
@@ -478,32 +526,62 @@ while (frame.row &lt; rows) {
 }
 if (frame.row &lt; rows) return;
 
-const stops = [
-    [[6, 15, 48], [15, 69, 140], [49, 176, 209], [246, 209, 115], [255, 251, 233]],
-    [[41, 0, 9], [134, 8, 16], [220, 42, 10], [250, 158, 31], [255, 250, 190]]
-];
-const colors = new Uint8Array(256 * 3);
-for (let i = 1; i &lt;= 255; ++i) {
-    const scale = (i - 1) * 4 / 254;
-    const segment = Math.min(3, Math.floor(scale));
-    const fraction = scale - segment;
-    for (let channel = 0; channel &lt; 3; ++channel) {
-        const low = palette === 2 ? i : stops[palette][segment][channel];
-        const high = palette === 2 ? i : stops[palette][segment + 1][channel];
-        colors[i * 3 + channel] = Math.round(low + fraction * (high - low));
+if (!frame.rgb || frame.rgb.palette !== palette) {
+    const stops = [
+        [[6, 15, 48], [15, 69, 140], [49, 176, 209], [246, 209, 115], [255, 251, 233]],
+        [[41, 0, 9], [134, 8, 16], [220, 42, 10], [250, 158, 31], [255, 250, 190]]
+    ];
+    const colors = new Uint8Array(256 * 3);
+    for (let i = 1; i &lt;= 255; ++i) {
+        const scale = (i - 1) * 4 / 254;
+        const segment = Math.min(3, Math.floor(scale));
+        const fraction = scale - segment;
+        for (let channel = 0; channel &lt; 3; ++channel) {
+            const low = palette === 2 ? i : stops[palette][segment][channel];
+            const high = palette === 2 ? i : stops[palette][segment + 1][channel];
+            colors[i * 3 + channel] = Math.round(low + fraction * (high - low));
+        }
     }
+
+    // The RGB1_CA decoder checks for another RGB triplet after the final row.
+    frame.rgb = {palette, colors, pixels: new Uint8Array(width * height * 3 + 3), row: 0};
 }
 
-// The RGB1_CA decoder checks for another RGB triplet after the final row.
-const pixels = new Uint8Array(width * height * 3 + 3);
-for (let i = 0, pixel = 0; i &lt; frame.intensities.length; ++i) {
-    const color = frame.intensities[i] * 3;
-    pixels[pixel++] = colors[color];
-    pixels[pixel++] = colors[color + 1];
-    pixels[pixel++] = colors[color + 2];
+const rgb = frame.rgb;
+while (rgb.row &lt; height) {
+    const first = rgb.row++ * width;
+    for (let i = first, pixel = first * 3; i &lt; first + width; ++i) {
+        const color = frame.intensities[i] * 3;
+        rgb.pixels[pixel++] = rgb.colors[color];
+        rgb.pixels[pixel++] = rgb.colors[color + 1];
+        rgb.pixels[pixel++] = rgb.colors[color + 2];
+    }
+    if (Date.now() &gt;= deadline) break;
 }
-outputs.image.value = pixels.buffer;
-frame.publishedPalette = palette;</string>
+if (rgb.row &lt; height) return;
+
+// caCamera receives dimensions and image data on separate monitors. Let the
+// previous frame reach the camera, then publish dimensions before the next frame.
+const now = Date.now();
+if (!this.camera) {
+    this.camera = {width: inputs.cameraWidth.value, height: inputs.cameraHeight.value,
+                   readyAfter: 0, lastImage: 0};
+}
+const camera = this.camera;
+if (camera.width !== width || camera.height !== height) {
+    if (now - camera.lastImage &lt; 200) return;
+    outputs.cameraWidth.value = camera.width = width;
+    outputs.cameraHeight.value = camera.height = height;
+    camera.readyAfter = now + 100;
+    return;
+}
+if (now &lt; camera.readyAfter || inputs.cameraWidth.value !== width ||
+    inputs.cameraHeight.value !== height) return;
+
+outputs.image.value = rgb.pixels.buffer;
+camera.lastImage = now;
+frame.publishedPalette = palette;
+frame.rgb = null;</string>
         </property>
        </widget>
       </item>
