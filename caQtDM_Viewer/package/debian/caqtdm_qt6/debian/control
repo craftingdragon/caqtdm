@@ -2,7 +2,7 @@ Source: caqtdm
 Section: science
 Priority: optional
 Maintainer: Helge Brands <helge.brands@psi.ch>
-Build-Depends: debhelper (>= 12), qt6-base-dev, libqwt-qt6-dev, epics-base, python3-dev, qt6-tools-dev, qt6-svg-dev, python3-dev, libzmq3-dev, qt6-positioning-dev, qt6-serialbus-dev, qt6-5compat-dev 
+Build-Depends: debhelper (>= 12), qt6-base-dev, qt6-declarative-dev, libqwt-qt6-dev, epics-base, python3-dev, qt6-tools-dev, qt6-svg-dev, python3-dev, libzmq3-dev, qt6-positioning-dev, qt6-serialbus-dev, qt6-5compat-dev
 Standards-Version: 4.6.1
 Homepage: http://caqtdm.github.io/
 

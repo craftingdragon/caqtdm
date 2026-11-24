@@ -2786,6 +2786,34 @@ has no equivalent in MEDM
 
 --------------
 
+.. _caScript:
+
+``caScript``
+~~~~~~~~~~~~
+
+caScript runs panel JavaScript on a worker thread. Each execution gets fresh
+``inputs``, ``outputs``, ``console``, and ``EpicsType`` bindings. A script can keep
+deliberate state on the JavaScript global object (``globalThis`` or ``this``)
+for the lifetime of the widget.
+
+Channel keys are aliases when supplied, otherwise channel names. Edit the
+channel lists in Designer and reload the panel to apply binding changes.
+Scripts assign a scalar to ``outputs[key].value``. The target must already
+exist as a connected, writable scalar ``internal://`` channel.
+
+Text shown in ``inputs[key].value`` uses UTF-8 display decoding. The IOC may
+instead send Latin-1 bytes. Use ``inputs[key].fromLatin1()`` or
+``inputs[key].fromUtf8()`` to decode the original snapshot explicitly.
+``rawBytes`` exposes that snapshot as a ``Uint8Array``, including embedded NUL
+bytes in char waveforms. String waveform bytes retain the EPICS string
+separator (escape, byte 27) between elements.
+
+``DataDriven`` scripts require a valid sample from every input. A disconnect
+clears readiness until the next valid sample. ``Constant`` scripts can use the
+last good value on disconnect and can inspect ``connected``. An execution
+that exceeds one second is interrupted and its outputs are discarded.
+Five consecutive timeouts disable the widget until the panel is reloaded.
+
 .. _caScriptButton:
 
 ``caScriptButton``

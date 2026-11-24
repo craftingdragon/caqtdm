@@ -126,7 +126,7 @@ jobs:
       run: |
         set -euo pipefail
         dnf install -y \
-          qt5-qtbase-devel qt5-qtsvg-devel qt5-qttools-devel qt5-qttools-static \
+          qt5-qtbase-devel qt5-qtsvg-devel qt5-qttools-devel qt5-qtdeclarative-devel qt5-qttools-static \
           qt5-qtwebsockets-devel qt5-qtserialbus-devel qt5-qtlocation-devel \
           qt5-qtx11extras-devel qwt-qt5-devel \
           cmake gcc-c++ make autoconf automake libtool pkgconfig \
@@ -139,7 +139,7 @@ jobs:
       run: |
         set -euo pipefail
         dnf install -y \
-          qt6-qtbase-devel qt6-qtsvg-devel qt6-qttools-devel \
+          qt6-qtbase-devel qt6-qtsvg-devel qt6-qttools-devel qt6-qtdeclarative-devel \
           qt6-qt5compat-devel qt6-qtlocation-devel qt6-qtserialbus-devel \
           qt6-qtwebsockets-devel qwt-qt6-devel \
           cmake gcc-c++ make autoconf automake libtool \
@@ -157,7 +157,7 @@ jobs:
       run: |
         set -euo pipefail
         dnf install -y \
-          qt6-qtbase-devel qt6-qtsvg-devel qt6-qttools-devel \
+          qt6-qtbase-devel qt6-qtsvg-devel qt6-qttools-devel qt6-qtdeclarative-devel \
           qt6-qt5compat-devel qt6-qtlocation-devel qt6-qtserialbus-devel \
           qt6-qtwebsockets-devel qwt-qt6-devel \
           cmake gcc-c++ make autoconf automake libtool pkgconfig \

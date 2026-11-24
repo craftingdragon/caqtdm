@@ -123,7 +123,7 @@ RUN set -eux; \
     rm -rf "/tmp/openssl-${OPENSSL_VERSION}" "/tmp/openssl-${OPENSSL_VERSION}.tar.gz"
 
 # Qt from source. The selected modules cover caQtDM's Qt requirements:
-# Widgets, Designer/UiTools, SVG, SerialPort, SerialBus, Positioning, OPC UA,
+# Widgets, Designer/UiTools, QML/JavaScript, SVG, SerialPort, SerialBus, Positioning, OPC UA,
 # QtWayland, Qt5Compat/QTextCodec, OpenGL, PrintSupport, XCB platform and image
 # plugins.
 RUN set -eux; \
@@ -138,7 +138,7 @@ RUN set -eux; \
       -release -shared \
       -no-pch \
       -nomake examples -nomake tests \
-      -submodules qtbase,qttools,qtsvg,qtserialport,qtserialbus,qtpositioning,qtopcua,qtwayland,qt5compat,qtimageformats \
+      -submodules qtbase,qttools,qtdeclarative,qtsvg,qtserialport,qtserialbus,qtpositioning,qtopcua,qtwayland,qt5compat,qtimageformats \
       -openssl-linked \
       -feature-open62541-security \
       -feature-gds \
@@ -164,6 +164,7 @@ RUN set -eux; \
 RUN set -eux; \
     test "$(${QT_PREFIX}/bin/qmake6 -query QT_VERSION)" = "${QT_VERSION}"; \
     test -x "${QT_PREFIX}/bin/designer"; \
+    test -f "${QT_PREFIX}/mkspecs/modules/qt_lib_qml.pri"; \
     test -f "${QT_PREFIX}/lib/libQt6OpcUa.so.6"; \
     test -f "${QT_PREFIX}/lib/libQt6WaylandClient.so.6"; \
     test -f "${QT_PREFIX}/plugins/opcua/libopen62541_backend.so"; \
