@@ -572,41 +572,54 @@ if (!this.frame || this.frame.geometry !== geometry) {
     }
     this.frame = {
         geometry, realCoordinates, cardioidOffsets, cardioidSquares, bulbSquares,
-        intensities: new Uint8Array(width * height), row: 0, publishedPalette: -1
+        intensities: new Uint8Array(width * height), row: 0, column: 0, publishedPalette: -1
     };
 }
 
 const frame = this.frame;
 if (frame.publishedPalette === palette) return;
 
-const deadline = Date.now() + 25;
-while (frame.row &lt; rows) {
-    const y = frame.row++;
-    const ci = imaginary + (height / 2 - y) * step;
-    const ciSquared = ci * ci;
-    const cardioidLimit = 0.25 * ciSquared;
-    const rowOffset = y * width;
-    for (let x = 0; x &lt; width; ++x) {
-        const q = frame.cardioidSquares[x] + ciSquared;
-        if (q * (q + frame.cardioidOffsets[x]) &lt;= cardioidLimit ||
-            frame.bulbSquares[x] + ciSquared &lt;= 0.0625) continue;
-        const cr = frame.realCoordinates[x];
-        let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
-        while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
-            zi = 2 * zr * zi + ci;
-            zr = zrSquared - ziSquared + cr;
-            zrSquared = zr * zr;
-            ziSquared = zi * zi;
-            ++count;
+// Keep the pixel loop across calls so the engine can optimize it as it warms up.
+if (!this.computePixels) {
+    this.computePixels = function(frame, end, rowOffset, ci, iterations, colorScale) {
+        const ciSquared = ci * ci;
+        const cardioidLimit = 0.25 * ciSquared;
+        for (let x = frame.column; x &lt; end; ++x) {
+            const q = frame.cardioidSquares[x] + ciSquared;
+            if (q * (q + frame.cardioidOffsets[x]) &lt;= cardioidLimit ||
+                frame.bulbSquares[x] + ciSquared &lt;= 0.0625) continue;
+            const cr = frame.realCoordinates[x];
+            let zr = 0, zi = 0, zrSquared = 0, ziSquared = 0, count = 0;
+            while (count &lt; iterations &amp;&amp; zrSquared + ziSquared &lt;= 4) {
+                zi = 2 * zr * zi + ci;
+                zr = zrSquared - ziSquared + cr;
+                zrSquared = zr * zr;
+                ziSquared = zi * zi;
+                ++count;
+            }
+            if (count &lt; iterations)
+                frame.intensities[rowOffset + x] = Math.round(30 + colorScale * Math.log(count));
         }
-        if (count &lt; iterations)
-            frame.intensities[rowOffset + x] = Math.round(30 + colorScale * Math.log(count));
-    }
-    if (symmetric &amp;&amp; y &gt; 0 &amp;&amp; height - y !== y)
-        frame.intensities.copyWithin((height - y) * width, rowOffset, rowOffset + width);
-    if (Date.now() &gt;= deadline) break;
+    };
 }
-if (frame.row &lt; rows) return;
+
+const deadline = Date.now() + 25;
+while (frame.row &lt; rows &amp;&amp; Date.now() &lt; deadline) {
+    const y = frame.row;
+    const rowOffset = y * width;
+    const ci = imaginary + (height / 2 - y) * step;
+    // A row near the boundary can contain many points that reach the iteration limit.
+    const end = Math.min(frame.column + 64, width);
+    this.computePixels(frame, end, rowOffset, ci, iterations, colorScale);
+    frame.column = end;
+    if (end === width) {
+        if (symmetric &amp;&amp; y &gt; 0 &amp;&amp; height - y !== y)
+            frame.intensities.copyWithin((height - y) * width, rowOffset, rowOffset + width);
+        ++frame.row;
+        frame.column = 0;
+    }
+}
+if (frame.row &lt; rows || Date.now() &gt;= deadline) return;
 
 if (!frame.rgb || frame.rgb.palette !== palette) {
     const stops = [
@@ -630,7 +643,7 @@ if (!frame.rgb || frame.rgb.palette !== palette) {
 }
 
 const rgb = frame.rgb;
-while (rgb.row &lt; height) {
+while (rgb.row &lt; height &amp;&amp; Date.now() &lt; deadline) {
     const first = rgb.row++ * width;
     for (let i = first, pixel = first * 3; i &lt; first + width; ++i) {
         const color = frame.intensities[i] * 3;
@@ -638,7 +651,6 @@ while (rgb.row &lt; height) {
         rgb.pixels[pixel++] = rgb.colors[color + 1];
         rgb.pixels[pixel++] = rgb.colors[color + 2];
     }
-    if (Date.now() &gt;= deadline) break;
 }
 if (rgb.row &lt; height) return;
 
