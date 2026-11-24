@@ -34,6 +34,7 @@
 #include <cawavetable.h>
 #include <gensoftpv.h>
 #include <QSignalSpy>
+#include <QCloseEvent>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QMutexLocker>
@@ -433,6 +434,120 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     } else {
         QCOMPARE(data->edata.rvalue, expected.toDouble());
     }
+}
+
+void TestCaQtDM_Lib::scriptKeepsInternalOutputBinding()
+{
+    genSoftPV target(m_parentAS);
+    target.setVariable("scriptCollision");
+    m_caQtDM_Lib->HandleWidget(&target, "", true, true);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    knobData *record = m_mutexKnobData->getMutexKnobDataPV(&target, "scriptCollision");
+    QVERIFY(record);
+    QTRY_VERIFY(record->edata.connected);
+    const int targetIndex = record->index;
+
+    caScript script(m_parentAS);
+    script.setOutputChannels({{"internal://scriptCollision.val", "result"}});
+    script.setScript("outputs.result.value = 42;");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+
+    // A widget-local monitor from another plugin must not shadow the internal target.
+    knobData collision = *record;
+    collision.index = m_mutexKnobData->GetMutexKnobDataIndex();
+    collision.dispW = &script;
+    collision.thisW = nullptr;
+    collision.mutex = nullptr;
+    qstrncpy(collision.pluginName, "epics3", sizeof(collision.pluginName));
+    m_mutexKnobData->SetMutexKnobData(collision.index, collision);
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*Channel bindings are fixed.*"));
+    script.setOutputChannels({{"internal://differentTarget", "result"}});
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptCollision = 42"));
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(targetIndex).edata.rvalue, 42.0);
+
+    // The target represents a monitor in a different panel and survives this close.
+    knobData survivingTarget = m_mutexKnobData->GetMutexKnobData(targetIndex);
+    survivingTarget.thisW = nullptr;
+    m_mutexKnobData->SetMutexKnobData(targetIndex, survivingTarget);
+    script.setScript("outputs.result.value = 99;");
+    script.executeScript();
+    QCloseEvent close;
+    QCoreApplication::sendEvent(m_caQtDM_Lib, &close);
+    QTRY_COMPARE(finished.count(), 2);
+    QCOMPARE(m_mutexKnobData->GetMutexKnobData(targetIndex).edata.rvalue, 42.0);
+}
+
+void TestCaQtDM_Lib::scriptInvalidWaveformClearsReadiness()
+{
+    genSoftPV source(m_parentAS);
+    source.setVariable("scriptInvalidWave");
+    source.setNelm(3);
+    source.setValue("1;2;3");
+    m_caQtDM_Lib->HandleWidget(&source, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setExecutionMode(caScript::DataDriven);
+    script.setInputChannels({{"internal://scriptInvalidWave", "sample"}});
+    script.setScript("if (inputs.sample.value.length !== 3) throw Error('bad sample');");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy updates(&script, &caScript::inputValueUpdated);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(!updates.isEmpty());
+
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
+
+    const knobData *record = m_mutexKnobData->getMutexKnobDataPV(&script, "scriptInvalidWave");
+    QVERIFY(record);
+    knobData malformed = *record;
+    malformed.edata.valueCount = malformed.edata.dataSize / sizeof(double) + 1;
+    m_caQtDM_Lib->Callback_UpdateWidget(malformed.index, &script, "", "", "", malformed);
+    script.executeScript(); // Would set the widget busy immediately if the old sample were still ready.
+    QSignalSpy warnings(&script, &caScript::scriptWarning);
+    const knobData valid = *record;
+    m_caQtDM_Lib->Callback_UpdateWidget(valid.index, &script, "", "", "", valid);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QVERIFY(warnings.isEmpty());
+}
+
+void TestCaQtDM_Lib::scriptReceivesUntruncatedText()
+{
+    const QByteArray latin1 = QByteArray(9000, 'a') + QByteArray::fromHex("fc");
+    const QByteArray utf8 = QByteArray(9000, 'a') + QByteArray::fromHex("c3bc");
+    genSoftPV latinSource(m_parentAS), utfSource(m_parentAS);
+    latinSource.setVariable("scriptLongLatin1");
+    utfSource.setVariable("scriptLongUtf8");
+    latinSource.setDataType(genSoftPV::String);
+    utfSource.setDataType(genSoftPV::String);
+    latinSource.setValue(QString::fromLatin1(latin1));
+    utfSource.setValue(QString::fromLatin1(utf8));
+    m_caQtDM_Lib->HandleWidget(&latinSource, "", true, true);
+    m_caQtDM_Lib->HandleWidget(&utfSource, "", true, true);
+
+    caScript script(m_parentAS);
+    script.setExecutionMode(caScript::DataDriven);
+    script.setInputChannels({{"internal://scriptLongLatin1", "latin"}, {"internal://scriptLongUtf8", "utf"}});
+    script.setScript("if (inputs.latin.rawBytes.length !== 9001 || inputs.utf.rawBytes.length !== 9002"
+                     " || inputs.utf.value.length !== 9001"
+                     " || inputs.latin.fromLatin1() !== inputs.utf.fromUtf8()"
+                     " || inputs.utf.fromUtf8().charCodeAt(9000) !== 252)"
+                     " throw Error('wrong text or bytes');");
+    m_caQtDM_Lib->HandleWidget(&script, "", false, false);
+    QSignalSpy updates(&script, &caScript::inputValueUpdated);
+    QMetaObject::invokeMethod(m_internalPlugin, "updateChannels", Qt::DirectConnection);
+    QTRY_VERIFY(updates.count() >= 2);
+    QSignalSpy finished(&script, &caScript::scriptFinished);
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QVERIFY(finished.last().first().toBool());
 }
 
 void TestCaQtDM_Lib::scriptSkipsInvalidOutputs_data()
