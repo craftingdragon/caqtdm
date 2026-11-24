@@ -54,6 +54,7 @@
 namespace {
 using ScriptClock = std::chrono::steady_clock;
 constexpr int maxWaveformSamples = 1024 * 1024;
+constexpr int maxWaveformBytes = 4 * 1024 * 1024;
 constexpr auto warningAfter = std::chrono::milliseconds(100);
 constexpr auto timeoutAfter = std::chrono::milliseconds(1000);
 
@@ -366,6 +367,17 @@ public slots:
                             samples.append(snapshot.property(static_cast<quint32>(i)).toNumber());
                         if (samples.size() == count) value = QVariant::fromValue(samples);
                     }
+                } else if (output.isObject()) {
+                    const int size = m_bufferSize.call({output, QJSValue(maxWaveformBytes)}).toInt();
+                    if (size > 0) {
+                        const QVariant buffer = output.toVariant();
+                        if (buffer.userType() == QMetaType::QByteArray) {
+                            const QByteArray bytes = buffer.toByteArray();
+                            // Qt 5 can share the JavaScript backing store with the QVariant.
+                            if (bytes.size() == size)
+                                value = QByteArray(bytes.constData(), size);
+                        }
+                    }
                 }
                 values.insert(it.key(), value);
             }
@@ -400,6 +412,12 @@ private:
             "if (hasOwn(result, 'error')) throw new range(result.error);\n"
             "return result.value; }; }; })"
             "(Function.prototype.call.bind(Object.prototype.hasOwnProperty), TypeError, RangeError)"));
+        m_bufferSize = m_engine->evaluate(QStringLiteral(
+            "(function(byteLength) { return function(buffer, maximum) {"
+            "try { const size = byteLength(buffer); return size <= maximum ? size : 0; }"
+            "catch (ignored) { return 0; }"
+            "}; })(Function.prototype.call.bind("
+            "Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength').get))"));
         m_waveformSnapshot = m_engine->evaluate(QStringLiteral(
             "(function(create, descriptor, hasOwn, isFinite) { return function(array, maximum) {"
             "try {"
@@ -436,6 +454,7 @@ private:
     QJSEngine *m_engine = nullptr;
     QJSValue m_runScript;
     QJSValue m_waveformSnapshot;
+    QJSValue m_bufferSize;
     QJSValue m_consoleFactory;
     QJSValue m_decodedTextFunction;
     QJSValue m_conversionFunction;

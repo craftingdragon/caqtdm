@@ -2900,8 +2900,8 @@ has no equivalent in MEDM
       values outside the requested integer range.
 
    ``outputs[key].value``
-      Assign a number, string, or numeric array to request a write when the script finishes
-      successfully. A channel with no assignment is skipped. Numeric targets
+      Assign a number, string, numeric array, or ``ArrayBuffer`` to request a
+      write when the script finishes successfully. A channel with no assignment is skipped. Numeric targets
       require finite values within the target's range, with integer values
       rounded to the nearest integer, ties away from zero. Internal String
       targets accept Latin-1 text without embedded NULs. A waveform assignment
@@ -2910,6 +2910,12 @@ has no equivalent in MEDM
       waveform. The array must contain 1 to 1,048,576 samples and fit the
       target's NELM. A valid assignment replaces the waveform and sets NORD
       to the sample count. A rejected assignment leaves the waveform intact.
+      For binary data, assign an ``ArrayBuffer`` such as
+      ``outputs.image.value = new Uint8Array([0, 128, 255]).buffer``.
+      This requires an internal Char waveform. The buffer must contain
+      1 byte to 4 MiB and fit NELM. caScript snapshots the bytes for the
+      write, including any embedded zero bytes. If you use a view over
+      part of a buffer, slice the buffer to that range before assigning it.
       Invalid or duplicate targets and rejected values are reported in the
       message window.
 

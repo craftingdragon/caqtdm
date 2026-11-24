@@ -27,6 +27,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QByteArray>
 #include <QVariant>
 #include <QVector>
 
@@ -102,6 +103,7 @@ public:
     // write access (pvSetValue / pvSetWave)
     void setValue(double rdata, qint32 idata, const QString &sdata);
     void setWave(const QVector<double> &values);
+    bool setByteWave(const char *data, int count);
     void setFieldValue(Field field, double rdata, qint32 idata, const QString &sdata);
 
     void fillKnobData(knobData *kData) const;
@@ -171,6 +173,7 @@ private:
     qint64 m_combinations;
     QString m_regexReplace;         // replacement template for written strings (the configured val)
     QVector<double> m_waveOverride;
+    QByteArray m_byteWaveOverride;
     int m_elapsedMs;
     bool m_configured;
 };

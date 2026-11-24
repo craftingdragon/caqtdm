@@ -527,6 +527,13 @@ void InternalChannel::tick()
     // without drive limits the value wraps at the native type range instead
     setCurrentValue(steppedValue(currentValue(), step, rangeLow, rangeHigh, overflow));
 
+    // Counters accumulate fractional steps using the numeric waveform store.
+    if(!m_byteWaveOverride.isEmpty()) {
+        m_waveOverride.reserve(m_byteWaveOverride.size());
+        for(char byte : m_byteWaveOverride)
+            m_waveOverride.append(static_cast<unsigned char>(byte));
+        m_byteWaveOverride.clear();
+    }
     // an explicitly set waveform counts as well, element by element
     for(int i = 0; i < m_waveOverride.size(); i++) {
         m_waveOverride[i] = steppedValue(m_waveOverride.at(i), step, rangeLow, rangeHigh, overflow);
@@ -810,6 +817,7 @@ void InternalChannel::setValue(double rdata, qint32 idata, const QString &sdata)
         break;
     }
     m_waveOverride.clear();
+    m_byteWaveOverride.clear();
     textArray.clear();
     m_elapsedMs = 0;
     updateAlarmState();
@@ -827,12 +835,26 @@ void InternalChannel::setWave(const QVector<double> &values)
         needsPublish = true;
         return;
     }
+    m_byteWaveOverride.clear();
     m_waveOverride = values;
     // like an EPICS waveform record a write updates NORD, capped at NELM
     nord = qMin(values.size(), nelm);
     if(!values.isEmpty()) setCurrentValue(values.at(0));
     updateAlarmState();
     needsPublish = true;
+}
+
+bool InternalChannel::setByteWave(const char *data, int count)
+{
+    if(fieldtype != caCHAR || isMatrix() || nelm <= 1 || !data || count <= 0 || count > nelm)
+        return false;
+    m_waveOverride.clear();
+    m_byteWaveOverride = QByteArray(data, count);
+    nord = count;
+    setCurrentValue(static_cast<unsigned char>(m_byteWaveOverride.at(0)));
+    updateAlarmState();
+    needsPublish = true;
+    return true;
 }
 
 double InternalChannel::elementValue(int i) const
@@ -978,7 +1000,9 @@ void InternalChannel::fillKnobData(knobData *kData) const
         kData->edata.valueCount = nord;
         if(allocateDataB(kData, (qint64) nord + 1)) {
             char *ptr = (char *) kData->edata.dataB;
-            for(int i = 0; i < nord; i++) ptr[i] = (char) (quint8) ((qint64) elementValue(i));
+            const int copied = qMin<qint64>(nord, m_byteWaveOverride.size());
+            if(copied > 0) memcpy(ptr, m_byteWaveOverride.constData(), copied);
+            for(int i = copied; i < nord; i++) ptr[i] = (char) (quint8) ((qint64) elementValue(i));
             ptr[nord] = '\0';
         } else {
             kData->edata.valueCount = 0;

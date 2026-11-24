@@ -292,7 +292,7 @@ bool InternalPlugin::pvSetValue(knobData *kData, double rdata, int32_t idata, ch
     return setValueForPv(QString::fromLatin1(kData->pv), rdata, idata, sdata) != 0;
 }
 
-int InternalPlugin::setWaveForPv(const QString &pv, float *fdata, double *ddata, int16_t *data16, int32_t *data32, int nelm)
+int InternalPlugin::setWaveForPv(const QString &pv, float *fdata, double *ddata, int16_t *data16, int32_t *data32, const char *sdata, int nelm)
 {
     QMutexLocker locker(&mutex);
     QString key;
@@ -302,6 +302,12 @@ int InternalPlugin::setWaveForPv(const QString &pv, float *fdata, double *ddata,
     InternalChannel *channel = channels.value(key, Q_NULLPTR);
     if(channel == Q_NULLPTR) return false;
     if(!channel->isConfigured()) return false;
+
+    if(sdata && !fdata && !ddata && !data16 && !data32) {
+        if(!channel->setByteWave(sdata, nelm)) return false;
+        publishChannel(key, channel);
+        return true;
+    }
 
     QVector<double> values;
     values.reserve(nelm);
@@ -318,19 +324,17 @@ int InternalPlugin::setWaveForPv(const QString &pv, float *fdata, double *ddata,
 
 int InternalPlugin::pvSetWave(char *pv, float *fdata, double *ddata, int16_t *data16, int32_t *data32, char *sdata, int nelm, char *object, char *errmess)
 {
-    Q_UNUSED(sdata);
     Q_UNUSED(object);
     Q_UNUSED(errmess);
     qCDebug(internalLog) << "pvSetWave" << pv << nelm;
-    return setWaveForPv(QString::fromLatin1(pv), fdata, ddata, data16, data32, nelm);
+    return setWaveForPv(QString::fromLatin1(pv), fdata, ddata, data16, data32, sdata, nelm);
 }
 
 bool InternalPlugin::pvSetWave(knobData *kData, float *fdata, double *ddata, int16_t *data16, int32_t *data32, char *sdata, int nelm, char *object, char *errmess)
 {
-    Q_UNUSED(sdata);
     Q_UNUSED(object);
     Q_UNUSED(errmess);
-    return setWaveForPv(QString::fromLatin1(kData->pv), fdata, ddata, data16, data32, nelm) != 0;
+    return setWaveForPv(QString::fromLatin1(kData->pv), fdata, ddata, data16, data32, sdata, nelm) != 0;
 }
 
 int InternalPlugin::pvGetTimeStamp(char *pv, char *timestamp)

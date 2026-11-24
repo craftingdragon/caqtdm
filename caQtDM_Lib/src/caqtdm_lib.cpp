@@ -7603,22 +7603,42 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
         const QString pv = channel.mid(11);
         const QVariant value = values.value(key);
         if (!value.isValid()) {
-            warn(channel, tr("expected a scalar or a dense array of finite numbers"));
+            warn(channel, tr("expected a scalar, a dense numeric array, or an ArrayBuffer"));
             continue;
         }
-        const bool waveform = value.userType() == qMetaTypeId<QVector<double>>();
+        const bool byteWaveform = value.userType() == QMetaType::QByteArray;
+        const bool waveform = byteWaveform || value.userType() == qMetaTypeId<QVector<double>>();
         knobData target;
         if (!mutexKnobDataP->getInternalOutputTarget(widget, pv, waveform, target)) {
             warn(channel, tr("target is not defined"));
             continue;
         }
         if (waveform) {
-            auto samples = value.value<QVector<double>>();
             if (pv.contains(QLatin1Char('.')) || !target.edata.connected || !target.edata.accessW
                 || target.edata.dimCount != 0 || target.edata.nelm <= 1) {
                 warn(channel, tr("target must be a connected writable one-dimensional waveform"));
                 continue;
             }
+            auto *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
+            QByteArray object = widget->objectName().toLatin1();
+            char error[SMALL_STRING_LENGTH] = {};
+            if (byteWaveform) {
+                auto bytes = value.toByteArray();
+                if (target.edata.fieldtype != caCHAR) {
+                    warn(channel, tr("ArrayBuffer requires an internal Char waveform"));
+                } else if (bytes.size() > target.edata.nelm) {
+                    warn(channel, tr("waveform exceeds target NELM"));
+                } else if (!plugin || !plugin->pvSetWave(&target, nullptr, nullptr, nullptr, nullptr,
+                                                         bytes.data(), static_cast<int>(bytes.size()),
+                                                         object.data(), error)) {
+                    warn(channel, tr("internal plugin rejected the waveform write"));
+                } else {
+                    widget->updateLastOutput(channel, tr("%1 samples").arg(bytes.size()));
+                }
+                continue;
+            }
+
+            auto samples = value.value<QVector<double>>();
             if (samples.size() > target.edata.nelm) {
                 warn(channel, tr("waveform exceeds target NELM"));
                 continue;
@@ -7647,9 +7667,6 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
                 warn(channel, tr("waveform sample exceeds the target range"));
                 continue;
             }
-            auto *plugin = static_cast<ControlsInterface *>(target.pluginInterface);
-            QByteArray object = widget->objectName().toLatin1();
-            char error[SMALL_STRING_LENGTH] = {};
             if (!plugin || !plugin->pvSetWave(&target, nullptr, samples.data(), nullptr, nullptr,
                                               nullptr, static_cast<int>(samples.size()), object.data(), error)) {
                 warn(channel, tr("internal plugin rejected the waveform write"));

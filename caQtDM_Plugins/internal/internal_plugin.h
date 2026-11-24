@@ -78,7 +78,7 @@ private slots:
 
 private:
     int setValueForPv(const QString &pv, double rdata, int32_t idata, char *sdata);
-    int setWaveForPv(const QString &pv, float *fdata, double *ddata, int16_t *data16, int32_t *data32, int nelm);
+    int setWaveForPv(const QString &pv, float *fdata, double *ddata, int16_t *data16, int32_t *data32, const char *sdata, int nelm);
     void publishChannel(const QString &key, InternalChannel *channel);
     void publishIndex(InternalChannel *channel, int index);
 
