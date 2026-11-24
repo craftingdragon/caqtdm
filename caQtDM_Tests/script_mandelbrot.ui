@@ -173,7 +173,7 @@
           </size>
          </property>
          <property name="channel">
-          <string notr="true">internal://mandelbrotZoom</string>
+          <string notr="true">internal://mandelbrotZoomStep</string>
          </property>
          <property name="direction">
           <enum>caSlider::Right</enum>
@@ -187,24 +187,24 @@
         </widget>
        </item>
        <item>
-        <widget class="caLineEdit" name="zoomReadout">
+        <widget class="caCalc" name="zoomReadout">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>80</width>
            <height>26</height>
           </size>
          </property>
-         <property name="maximumSize">
-          <size>
-           <width>60</width>
-           <height>16777215</height>
-          </size>
-         </property>
          <property name="channel">
-          <string notr="true">internal://mandelbrotZoom</string>
+          <string notr="true">internal://mandelbrotZoomStep</string>
+         </property>
+         <property name="calc">
+          <string notr="true">NINT(2^(A/8))</string>
+         </property>
+         <property name="precision">
+          <number>0</number>
          </property>
          <property name="fontScaleMode">
-          <enum>caLineEdit::None</enum>
+          <enum>caCalc::None</enum>
          </property>
         </widget>
        </item>
@@ -446,21 +446,21 @@
        </widget>
       </item>
       <item>
-       <widget class="genSoftPV" name="zoomDefinition">
+       <widget class="genSoftPV" name="zoomStepDefinition">
         <property name="variable">
-         <string notr="true">mandelbrotZoom</string>
+         <string notr="true">mandelbrotZoomStep</string>
         </property>
         <property name="dataType">
          <enum>genSoftPV::Long</enum>
         </property>
         <property name="value">
-         <string notr="true">1</string>
+         <string notr="true">0</string>
         </property>
         <property name="drvl">
-         <string notr="true">1</string>
+         <string notr="true">0</string>
         </property>
         <property name="drvh">
-         <string notr="true">64</string>
+         <string notr="true">160</string>
         </property>
         <property name="precision">
          <number>0</number>
@@ -485,7 +485,7 @@
          <string notr="true">1.5</string>
         </property>
         <property name="precision">
-         <number>6</number>
+         <number>12</number>
         </property>
        </widget>
       </item>
@@ -507,7 +507,7 @@
          <string notr="true">1.5</string>
         </property>
         <property name="precision">
-         <number>6</number>
+         <number>12</number>
         </property>
        </widget>
       </item>
@@ -585,7 +585,7 @@
          <enum>caScript::DataDriven</enum>
         </property>
         <property name="channels">
-         <string notr="true">[{"channel":"internal://mandelbrotResolution.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"resolution"},{"channel":"internal://mandelbrotIterations.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"iterations"},{"channel":"internal://mandelbrotPalette.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"palette"},{"channel":"internal://mandelbrotZoom.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"zoom"},{"channel":"internal://mandelbrotReal.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"real"},{"channel":"internal://mandelbrotImaginary.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"imaginary"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotResolution.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"resolution"},{"channel":"internal://mandelbrotIterations.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"iterations"},{"channel":"internal://mandelbrotPalette.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"palette"},{"channel":"internal://mandelbrotZoomStep.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"zoomStep"},{"channel":"internal://mandelbrotReal.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"real"},{"channel":"internal://mandelbrotImaginary.{\"caqtdm_monitor\":{\"maxdisplayrate\":50}}","alias":"imaginary"}]</string>
         </property>
         <property name="outputChannels">
          <string notr="true">[{"channel":"internal://mandelbrotRenderRequest","alias":"request"}]</string>
@@ -593,7 +593,7 @@
         <property name="script">
          <string notr="true">outputs.request.value = JSON.stringify([
     inputs.resolution.value, inputs.iterations.value, inputs.palette.value,
-    inputs.zoom.value, inputs.real.value, inputs.imaginary.value
+    Math.round(Math.pow(2, inputs.zoomStep.value / 8)), inputs.real.value, inputs.imaginary.value
 ]);</string>
         </property>
        </widget>
@@ -818,10 +818,10 @@ frame.rgb = null;</string>
       <item>
        <widget class="caScript" name="resetScript">
         <property name="outputChannels">
-         <string notr="true">[{"channel":"internal://mandelbrotZoom","alias":"zoom"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
+         <string notr="true">[{"channel":"internal://mandelbrotZoomStep","alias":"zoomStep"},{"channel":"internal://mandelbrotReal","alias":"real"},{"channel":"internal://mandelbrotImaginary","alias":"imaginary"}]</string>
         </property>
         <property name="script">
-         <string notr="true">outputs.zoom.value = 1;
+         <string notr="true">outputs.zoomStep.value = 0;
 outputs.real.value = -0.6;
 outputs.imaginary.value = 0;</string>
         </property>
@@ -860,6 +860,11 @@ outputs.imaginary.value = 0;</string>
    <class>caThermo</class>
    <extends>QWidget</extends>
    <header>cathermo.h</header>
+  </customwidget>
+  <customwidget>
+   <class>caCalc</class>
+   <extends>QLabel</extends>
+   <header>cacalc.h</header>
   </customwidget>
   <customwidget>
    <class>caChoice</class>
