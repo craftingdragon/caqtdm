@@ -77,6 +77,8 @@ private slots:
     void scriptEditorOpensFromPreferredTaskAction();
     void scriptEditorChecksSyntaxLiveWithoutRunning();
     void scriptEditorHighlightsParserError();
+    void scriptEditorAndRuntimeAgreeOnExamples_data();
+    void scriptEditorAndRuntimeAgreeOnExamples();
     void scriptEditorSavesOnlyTheTargetWidget();
     void channelDialogShowsConfigurationAndCancelPreservesIt_data();
     void channelDialogShowsConfigurationAndCancelPreservesIt();

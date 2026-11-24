@@ -669,6 +669,73 @@ void TestCaScript::scriptEditorHighlightsParserError()
     QVERIFY(diagnostic->text().contains(QStringLiteral("Line 2, column 14")));
 }
 
+void TestCaScript::scriptEditorAndRuntimeAgreeOnExamples_data()
+{
+    QTest::addColumn<QString>("script");
+    QTest::addColumn<bool>("validSyntax");
+    QTest::addColumn<QString>("expectedError");
+    QTest::addColumn<QString>("expectedLog");
+
+    QTest::newRow("undefined-identifiers") << QStringLiteral("a\nsd\nger\nconsole.\nlog\n(a\n)\n\nreturn 11;")
+        << true << QStringLiteral("ReferenceError: a is not defined") << QString();
+    QTest::newRow("unreachable-multiline-call") << QStringLiteral("return 11;\nconsole.\nlog\n(a\n)")
+        << true << QString() << QString();
+    QTest::newRow("multiline-call") << QStringLiteral("const a = 42;\nconsole.\nlog\n(a\n)")
+        << true << QString() << QStringLiteral("42");
+    QTest::newRow("unicode-syntax-error") << QStringLiteral("return 11;\nafeweägwrähw$r-$äwrh-\n-\nä\nägeq q")
+        << false << QStringLiteral("SyntaxError") << QString();
+
+    // Adapted from https://github.com/denysdovhan/wtfjs#-examples for the caScript host.
+    QTest::newRow("wtfjs-return-newline") << QStringLiteral("function f() { return\n{ value: 42 } }\nconsole.log(f());")
+        << true << QString() << QStringLiteral("undefined");
+    QTest::newRow("wtfjs-return-object") << QStringLiteral("function f() { return { value: 42 }; }\nconsole.log(f().value);")
+        << true << QString() << QStringLiteral("42");
+    QTest::newRow("wtfjs-arrow-block") << QStringLiteral("const f = () => { value: 42 };\nconsole.log(f());")
+        << true << QString() << QStringLiteral("undefined");
+    QTest::newRow("wtfjs-arrow-object") << QStringLiteral("const f = () => ({ value: 42 });\nconsole.log(f().value);")
+        << true << QString() << QStringLiteral("42");
+    QTest::newRow("wtfjs-lexical-arguments") << QStringLiteral("const first = () => arguments[0];\nconsole.log(first() === inputs);")
+        << true << QString() << QStringLiteral("true");
+    QTest::newRow("wtfjs-array-hole") << QStringLiteral("const a = [1, , 3,];\nconsole.log(a.length === 3 && !(1 in a));")
+        << true << QString() << QStringLiteral("true");
+    QTest::newRow("wtfjs-array-equality") << QStringLiteral("const a = [0];\nconsole.log(a == 0 && a !== 0);")
+        << true << QString() << QStringLiteral("true");
+    QTest::newRow("wtfjs-parse-int") << QStringLiteral("console.log(parseInt('fd!', 16));")
+        << true << QString() << QStringLiteral("253");
+    QTest::newRow("wtfjs-floating-point") << QStringLiteral("console.log(0.3 === (0.1 + 0.2));")
+        << true << QString() << QStringLiteral("false");
+}
+
+void TestCaScript::scriptEditorAndRuntimeAgreeOnExamples()
+{
+    QFETCH(QString, script);
+    QFETCH(bool, validSyntax);
+    QFETCH(QString, expectedError);
+    QFETCH(QString, expectedLog);
+    caScript widget;
+    widget.setScript(script);
+
+    CaScriptEditorDialog dialog(&widget);
+    const auto *diagnostic = dialog.findChild<QLabel *>(QStringLiteral("scriptDiagnostic"));
+    QVERIFY(diagnostic);
+    QVERIFY(!diagnostic->text().isEmpty());
+    QCOMPARE(diagnostic->text() == QStringLiteral("JavaScript syntax is valid."), validSyntax);
+
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    QSignalSpy errors(&widget, &caScript::scriptError);
+    QSignalSpy info(&widget, &caScript::scriptInfo);
+    widget.executeScript();
+    QTRY_COMPARE(finished.count(), 1);
+    QCOMPARE(finished.first().first().toBool(), expectedError.isEmpty());
+    QCOMPARE(errors.count(), expectedError.isEmpty() ? 0 : 1);
+    if (!expectedError.isEmpty()) {
+        const QString error = errors.first().first().toString();
+        QVERIFY2(error.contains(expectedError), qPrintable(error));
+    }
+    QCOMPARE(info.count(), expectedLog.isEmpty() ? 0 : 1);
+    if (!expectedLog.isEmpty()) QCOMPARE(info.first().first().toString(), expectedLog);
+}
+
 void TestCaScript::scriptEditorSavesOnlyTheTargetWidget()
 {
     FakeFormWindow form;
