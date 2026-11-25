@@ -2914,7 +2914,7 @@ has no equivalent in MEDM
       values outside the requested integer range.
 
    ``outputs[key].value``
-      Assign a number, string, numeric array, or ``ArrayBuffer`` to request a
+      Assign a number, string, numeric array, ``Float64Array``, or ``ArrayBuffer`` to request a
       write when the script finishes successfully. A channel with no assignment is skipped. Numeric targets
       require finite values within the target's range, with integer values
       rounded to the nearest integer, ties away from zero. Internal String
@@ -2924,6 +2924,10 @@ has no equivalent in MEDM
       waveform. The array must contain 1 to 1,048,576 samples and fit the
       target's NELM. A valid assignment replaces the waveform and sets NORD
       to the sample count. A rejected assignment leaves the waveform intact.
+      For large numeric waveforms, assign a ``Float64Array`` directly, for
+      example ``outputs.image.value = new Float64Array([0, 128, 255])``.
+      The same sample count and value checks apply. A subarray writes only
+      the samples in that view.
       For binary data, assign an ``ArrayBuffer`` such as
       ``outputs.image.value = new Uint8Array([0, 128, 255]).buffer``.
       This requires an internal Char waveform. The buffer must contain

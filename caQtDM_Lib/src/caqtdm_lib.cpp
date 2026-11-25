@@ -7612,7 +7612,7 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
         const QString pv = channel.mid(11);
         const QVariant value = values.value(key);
         if (!value.isValid()) {
-            warn(channel, tr("expected a scalar, a dense numeric array, or an ArrayBuffer"));
+            warn(channel, tr("expected a scalar, a dense numeric array, a Float64Array, or an ArrayBuffer"));
             continue;
         }
         const bool byteWaveform = value.userType() == QMetaType::QByteArray;

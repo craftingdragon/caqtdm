@@ -573,14 +573,28 @@ void TestCaQtDM_Lib::scriptWritesInternalWaveform()
     QCOMPARE(data->edata.valueCount, 2);
     QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 2), QByteArray::fromHex("ff00"));
 
+    script.setScript("this.samples = new Float64Array([Infinity, 254.5, 0, NaN]);"
+                     "outputs.image.value = this.samples.subarray(1, 3);");
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 4);
+    QVERIFY(finished.last().first().toBool());
+    const QVariant typedSnapshot = frames.last().first().toMap().value("image");
+    QCOMPARE(typedSnapshot.value<QVector<double>>(), (QVector<double>{254.5, 0.0}));
+    QCOMPARE(data->edata.valueCount, 2);
+    QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 2), QByteArray::fromHex("ff00"));
+    QCOMPARE(script.getDisplayText(), QStringLiteral("Succeeded (1 written)"));
+
     const QStringList rejected = {
         "new ArrayBuffer(0)", "new ArrayBuffer(4194305)", "new ArrayBuffer(5)",
         "({byteLength: 3})", "new Uint8Array([0, 128, 255])",
         "[]", "[, 2]", "[[0]]", "[1, Infinity]", "[1, 256]", "[1, 2, 3, 4, 5]",
+        "new Float64Array(0)", "new Float64Array(1048577)", "new Float64Array([NaN])",
+        "new Float64Array([Infinity])", "new Float64Array([256])", "new Float64Array(5)", "new Float32Array([1, 2])",
         "new Array(1048577)", "Object.defineProperty([0], '0', {get: function() { return 1; }})"
     };
     for (const QString &value : rejected) {
-        script.setScript(QStringLiteral("outputs.image.value = %1; outputs.scalar.value = 42;").arg(value));
+        script.setScript(QStringLiteral(
+            "this.samples[1] = 1; outputs.image.value = %1; outputs.scalar.value = 42;").arg(value));
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression("caScript .*output .* ignored: .*"));
         const int count = finished.count();
         script.executeScript();
@@ -590,6 +604,7 @@ void TestCaQtDM_Lib::scriptWritesInternalWaveform()
         QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 2), QByteArray::fromHex("ff00"));
         QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(scalar, QStringLiteral("scriptWaveformScalar"))->edata.rvalue, 42.0);
     }
+    QCOMPARE(typedSnapshot.value<QVector<double>>(), (QVector<double>{254.5, 0.0}));
 }
 
 void TestCaQtDM_Lib::scriptKeepsInternalOutputBinding()

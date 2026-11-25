@@ -59,6 +59,23 @@ constexpr int maxWaveformBytes = 4 * 1024 * 1024;
 constexpr auto warningAfter = std::chrono::milliseconds(100);
 constexpr auto timeoutAfter = std::chrono::milliseconds(1000);
 
+QVariant unpackNumericOutput(const QJSValue &buffer, QJSEngine *engine, ScriptClock::time_point deadline)
+{
+    static_assert(sizeof(double) == 8, "Float64Array requires 64-bit doubles");
+    const QVariant storage = buffer.toVariant();
+    if (storage.userType() != QMetaType::QByteArray) return {};
+    const QByteArray bytes = storage.toByteArray();
+    if (bytes.isEmpty() || bytes.size() % sizeof(double) != 0
+        || bytes.size() > maxWaveformSamples * int(sizeof(double))) return {};
+    QVector<double> samples(bytes.size() / sizeof(double));
+    std::memcpy(samples.data(), bytes.constData(), bytes.size());
+    for (int i = 0; i < samples.size(); ++i) {
+        if ((i % 256) == 0 && (engine->isInterrupted() || ScriptClock::now() >= deadline)) return {};
+        if (!qIsFinite(samples.at(i))) return {};
+    }
+    return QVariant::fromValue(samples);
+}
+
 // One thread services deadlines for all widgets. A worker unregisters its engine
 // under the same lock used to interrupt it, before it can finish or be destroyed.
 class CaScriptWatchdog
@@ -440,6 +457,10 @@ public slots:
                             if (bytes.size() == size)
                                 value = QByteArray(bytes.constData(), size);
                         }
+                    } else {
+                        const QJSValue numeric = m_float64Snapshot.call({output, QJSValue(maxWaveformSamples)});
+                        if (numeric.isObject() && !numeric.isError())
+                            value = unpackNumericOutput(numeric, m_engine, deadline);
                     }
                 }
                 values.insert(it.key(), value);
@@ -481,6 +502,21 @@ private:
             "catch (ignored) { return 0; }"
             "}; })(Function.prototype.call.bind("
             "Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength').get))"));
+        m_float64Snapshot = m_engine->evaluate(QStringLiteral(
+            "(function(Float64, prototype, descriptor, apply) {"
+            "const tag = descriptor(prototype, Symbol.toStringTag).get;"
+            "const length = descriptor(prototype, 'length').get;"
+            "const buffer = descriptor(prototype, 'buffer').get;"
+            "const set = prototype.set;"
+            "return function(view, maximum) {"
+            "if (apply(tag, view, []) !== 'Float64Array') return null;"
+            "const size = apply(length, view, []);"
+            "if (size < 1 || size > maximum) return;"
+            "const snapshot = new Float64(size);"
+            "apply(set, snapshot, [view]);"
+            "return apply(buffer, snapshot, []);"
+            "}; })(Float64Array, Object.getPrototypeOf(Float64Array.prototype),"
+            "Object.getOwnPropertyDescriptor, Reflect.apply)"));
         m_waveformSnapshot = m_engine->evaluate(QStringLiteral(
             "(function(create, descriptor, hasOwn, isFinite) { return function(array, maximum) {"
             "try {"
@@ -518,6 +554,7 @@ private:
     QJSValue m_runScript;
     QJSValue m_waveformSnapshot;
     QJSValue m_bufferSize;
+    QJSValue m_float64Snapshot;
     QJSValue m_consoleFactory;
     QJSValue m_decodedTextFunction;
     QJSValue m_conversionFunction;
