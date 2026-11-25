@@ -7594,8 +7594,16 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
 {
     caScript *widget = qobject_cast<caScript *>(sender());
     if (!widget || !AllowsUpdate) return;
-    const auto warn = [widget](const QString &channel, const QString &reason) {
+    int written = 0;
+    int rejected = 0;
+    QString firstRejection;
+    const auto warn = [widget, &rejected, &firstRejection](const QString &channel, const QString &reason) {
+        if (++rejected == 1) firstRejection = tr("%1 (%2)").arg(channel, reason);
         widget->reportDiagnostic(QtWarningMsg, tr("output %1 ignored: %2").arg(channel, reason));
+    };
+    const auto recordWrite = [widget, &written](const QString &channel, const QVariant &value) {
+        ++written;
+        widget->updateLastOutput(channel, value);
     };
     const auto targetName = [](QString channel) {
         channel = channel.trimmed();
@@ -7653,7 +7661,7 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
                                                          object.data(), error)) {
                     warn(channel, tr("internal plugin rejected the waveform write"));
                 } else {
-                    widget->updateLastOutput(channel, tr("%1 samples").arg(bytes.size()));
+                    recordWrite(channel, tr("%1 samples").arg(bytes.size()));
                 }
                 continue;
             }
@@ -7691,7 +7699,7 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
                                               nullptr, static_cast<int>(samples.size()), object.data(), error)) {
                 warn(channel, tr("internal plugin rejected the waveform write"));
             } else {
-                widget->updateLastOutput(channel, tr("%1 samples").arg(samples.size()));
+                recordWrite(channel, tr("%1 samples").arg(samples.size()));
             }
             continue;
         }
@@ -7763,9 +7771,10 @@ void CaQtDM_Lib::Callback_ScriptOutputs(const QVariantMap &values)
             const QVariant writtenValue = target.edata.fieldtype == caSTRING
                 ? QVariant(QString::fromLatin1(text))
                 : QVariant(target.edata.fieldtype == caFLOAT ? double(float(realValue)) : realValue);
-            widget->updateLastOutput(channel, writtenValue);
+            recordWrite(channel, writtenValue);
         }
     }
+    if (written > 0 || rejected > 0) widget->updateWriteOutcome(written, rejected, firstRejection);
 }
 
 void CaQtDM_Lib::Callback_AlarmTreeWrite(const QString &pv, const QString &text, bool asString)

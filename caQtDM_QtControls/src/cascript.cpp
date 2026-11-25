@@ -652,6 +652,20 @@ QString caScript::getLastOutputText() const
     return m_lastOutputText;
 }
 
+void caScript::updateWriteOutcome(int written, int rejected, const QString &firstRejection)
+{
+    // A synchronous monitor notification may already have triggered the next run.
+    if (m_running) return;
+    if (rejected == 0) {
+        setStatusText(tr("Succeeded (%1 written)").arg(written));
+    } else if (written == 0) {
+        setStatusText(tr("Writes rejected (%1)\n%2").arg(rejected).arg(firstRejection));
+    } else {
+        setStatusText(tr("Partial write (%1 written, %2 rejected)\n%3")
+                      .arg(written).arg(rejected).arg(firstRejection));
+    }
+}
+
 void caScript::setStatusText(const QString &text)
 {
     m_statusText = text;

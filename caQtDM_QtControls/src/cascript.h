@@ -79,6 +79,7 @@ public:
     void setDisplayMode(DisplayMode mode);
     QString getDisplayText() const;
     QString getLastOutputText() const;
+    void updateWriteOutcome(int written, int rejected, const QString &firstRejection);
     void reportDiagnostic(QtMsgType level, const QString &message);
     void reportConfigurationErrors(const QStringList &errors);
 

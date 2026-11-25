@@ -2868,8 +2868,9 @@ has no equivalent in MEDM
       - ``LastOutput`` shows the most recent successful output write.
         Waveform writes show the sample count.
       - ``Status`` shows whether the script is idle, waiting for inputs, running,
-        succeeded, failed, timed out, or disabled. Success describes JavaScript
-        execution. A write can still be rejected afterward.
+        succeeded, failed, timed out, or disabled. After a run with output
+        assignments, it shows how many writes succeeded or were rejected.
+        When a write is rejected, it shows the first affected channel and reason.
       - ``Diagnostics`` shows the latest info, warning, or error, including
         rejected output writes.
 

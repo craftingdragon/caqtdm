@@ -417,6 +417,7 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     const int nextIndex = m_mutexKnobData->GetMutexKnobDataIndex();
 
     caScript script(m_parentAS);
+    script.setDisplayMode(caScript::Status);
     script.setOutputChannels({{QStringLiteral("internal://scriptOutputTarget"), QStringLiteral("result")}});
     script.setScript(QStringLiteral("outputs.result.value = %1;").arg(expression));
     m_caQtDM_Lib->HandleWidget(&script, "", false, false);
@@ -426,10 +427,12 @@ void TestCaQtDM_Lib::scriptWritesExistingScalar()
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
     if (warning) {
+        QVERIFY(script.getDisplayText().startsWith(QStringLiteral("Writes rejected (1)\ninternal://scriptOutputTarget (")));
         script.setDisplayMode(caScript::Diagnostics);
         QVERIFY(script.getDisplayText().startsWith(QStringLiteral("Warning: output internal://scriptOutputTarget ignored: ")));
         QVERIFY(script.getLastOutputText().isEmpty());
     } else {
+        QCOMPARE(script.getDisplayText(), QStringLiteral("Succeeded (1 written)"));
         QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptOutputTarget = ") + expected.toString());
     }
     QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
@@ -536,6 +539,7 @@ void TestCaQtDM_Lib::scriptWritesInternalWaveform()
     });
 
     caScript script(m_parentAS);
+    script.setDisplayMode(caScript::Status);
     script.setOutputChannels({{"internal://scriptWaveformOutput.VAL", "image"},
                               {"internal://scriptWaveformScalar", "scalar"}});
     script.setScript("outputs.image.value = [0, 127.5, 255];");
@@ -548,12 +552,14 @@ void TestCaQtDM_Lib::scriptWritesInternalWaveform()
     QCOMPARE(data->edata.valueCount, 3);
     QCOMPARE(QByteArray(static_cast<const char *>(data->edata.dataB), 3), QByteArray::fromHex("0080ff"));
     QCOMPARE(script.getLastOutputText(), QStringLiteral("internal://scriptWaveformOutput = 3 samples"));
+    QCOMPARE(script.getDisplayText(), QStringLiteral("Succeeded (1 written)"));
 
     script.setScript("this.bytes = new Uint8Array([0, 128, 255]); outputs.image.value = this.bytes.buffer;");
     QSignalSpy frames(&script, &caScript::outputValuesReady);
     script.executeScript();
     QTRY_COMPARE(finished.count(), 2);
     QVERIFY(finished.last().first().toBool());
+    QCOMPARE(script.getDisplayText(), QStringLiteral("Succeeded (1 written)"));
     QCOMPARE(frames.size(), 1);
     const auto snapshot = frames.first().first().toMap().value("image").toByteArray();
     QCOMPARE(snapshot, QByteArray::fromHex("0080ff"));
@@ -705,11 +711,17 @@ void TestCaQtDM_Lib::scriptSkipsInvalidOutputs_data()
     QTest::addColumn<QString>("badChannel");
     QTest::addColumn<bool>("duplicate");
     QTest::addColumn<QString>("badValue");
-    QTest::newRow("missing") << QStringLiteral("internal://missing") << false << QStringLiteral("99");
-    QTest::newRow("external") << QStringLiteral("epics3://notAllowed") << false << QStringLiteral("99");
-    QTest::newRow("duplicate-val") << QStringLiteral("internal://duplicate") << true << QStringLiteral("99");
-    QTest::newRow("duplicate-same-value") << QStringLiteral("internal://duplicate") << true << QStringLiteral("100");
-    QTest::newRow("invalid-value") << QStringLiteral("internal://duplicate") << false << QStringLiteral("NaN");
+    QTest::addColumn<QString>("reason");
+    QTest::newRow("missing") << QStringLiteral("internal://missing") << false << QStringLiteral("99")
+        << QStringLiteral("target is not defined");
+    QTest::newRow("external") << QStringLiteral("epics3://notAllowed") << false << QStringLiteral("99")
+        << QStringLiteral("only existing internal channels are supported");
+    QTest::newRow("duplicate-val") << QStringLiteral("internal://duplicate") << true << QStringLiteral("99")
+        << QStringLiteral("duplicate output target");
+    QTest::newRow("duplicate-same-value") << QStringLiteral("internal://duplicate") << true << QStringLiteral("100")
+        << QStringLiteral("duplicate output target");
+    QTest::newRow("invalid-value") << QStringLiteral("internal://duplicate") << false << QStringLiteral("NaN")
+        << QStringLiteral("value must be a finite number");
 }
 
 void TestCaQtDM_Lib::scriptSkipsInvalidOutputs()
@@ -717,12 +729,14 @@ void TestCaQtDM_Lib::scriptSkipsInvalidOutputs()
     QFETCH(QString, badChannel);
     QFETCH(bool, duplicate);
     QFETCH(QString, badValue);
+    QFETCH(QString, reason);
     genSoftPV *good = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                                QStringLiteral("scriptGoodOutput"), "", "");
     genSoftPV *bad = registerInternalGenSoftPV(m_caQtDM_Lib, m_internalPlugin, m_parentAS,
                                               QStringLiteral("duplicate"), "", "");
     const int nextIndex = m_mutexKnobData->GetMutexKnobDataIndex();
     caScript script(m_parentAS);
+    script.setDisplayMode(caScript::Status);
     QList<caScript::InputChannel> outputs = {
         {QStringLiteral("internal://scriptGoodOutput"), QStringLiteral("good")},
         {badChannel, QStringLiteral("bad")}
@@ -738,10 +752,19 @@ void TestCaQtDM_Lib::scriptSkipsInvalidOutputs()
     script.executeScript();
     QTRY_COMPARE(finished.count(), 1);
     QVERIFY(finished.first().first().toBool());
+    const QString status = QStringLiteral("Partial write (1 written, %1 rejected)\n%2 (%3)")
+        .arg(duplicate ? 2 : 1).arg(badChannel, reason);
+    QCOMPARE(script.getDisplayText(), status);
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(good, QStringLiteral("scriptGoodOutput"))->edata.rvalue, 42.0);
     QCOMPARE(m_mutexKnobData->getMutexKnobDataPV(bad, QStringLiteral("duplicate"))->edata.rvalue, 0.0);
     QCOMPARE(m_mutexKnobData->GetMutexKnobDataIndex(), nextIndex);
     QVERIFY(!m_mutexKnobData->getMutexKnobDataPV(&script, QStringLiteral("missing")));
+
+    script.setScript(QStringLiteral("return;"));
+    script.executeScript();
+    QTRY_COMPARE(finished.count(), 2);
+    QVERIFY(finished.last().first().toBool());
+    QCOMPARE(script.getDisplayText(), QStringLiteral("Succeeded"));
 }
 
 void TestCaQtDM_Lib::scriptPublishesScaledInput_data()
