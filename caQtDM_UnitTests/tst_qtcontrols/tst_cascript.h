@@ -73,6 +73,7 @@ private slots:
     void explicitScalarConversions_data();
     void explicitScalarConversions();
     void conversionsPreserveInputSnapshot();
+    void numericWaveformSnapshotSurvivesUpdateAndDisconnect();
     void waveformSnapshotUsesJavaScriptArray();
     void scriptEditorOpensFromPreferredTaskAction();
     void scriptEditorChecksSyntaxLiveWithoutRunning();

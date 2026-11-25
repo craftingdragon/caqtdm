@@ -6839,41 +6839,22 @@ void CaQtDM_Lib::Callback_UpdateWidget(int indx, QWidget *w,
                     valid = true;
                 } else if (count >= 0 && (count == 0 || (data.edata.dataB
                     && count <= data.edata.dataSize / elementSize))) {
-                    values.reserve(count);
-                    if (count > 0) {
-                        bytes = QByteArray(static_cast<const char *>(data.edata.dataB), count * elementSize);
+                    const QByteArray snapshot(count > 0 ? static_cast<const char *>(data.edata.dataB) : "",
+                                              count * elementSize);
+                    bufferLock.unlock();
+                    if (data.edata.dimCount == 2
+                        && (data.edata.dim[0] <= 0 || data.edata.dim[1] <= 0
+                            || qint64(data.edata.dim[0]) * data.edata.dim[1] != count)) {
+                        scriptWidget->updateInputSample(input, metadata, QVariant());
+                    } else {
+                        scriptWidget->updateNumericInputSample(input, metadata, snapshot);
                     }
-                    for (int i = 0; i < count; ++i) {
-                        double value;
-                        switch (data.edata.fieldtype) {
-                        case caDOUBLE: value = static_cast<const double *>(data.edata.dataB)[i]; break;
-                        case caFLOAT: value = static_cast<const float *>(data.edata.dataB)[i]; break;
-                        case caINT: value = static_cast<const int16_t *>(data.edata.dataB)[i]; break;
-                        case caLONG: value = static_cast<const int32_t *>(data.edata.dataB)[i]; break;
-                        case caCHAR: value = static_cast<const uint8_t *>(data.edata.dataB)[i]; break;
-                        default: return;
-                        }
-                        values.append(value);
-                    }
-                    valid = true;
+                    return;
                 }
             }
             bufferLock.unlock();
             if (valid) {
-                if (data.edata.dimCount == 2) {
-                    const int rows = data.edata.dim[0];
-                    const int columns = data.edata.dim[1];
-                    if (rows <= 0 || columns <= 0 || qint64(rows) * columns != values.size()) {
-                        scriptWidget->updateInputSample(input, metadata, QVariant());
-                        return;
-                    }
-                    QVariantList matrix;
-                    matrix.reserve(rows);
-                    for (int row = 0; row < rows; ++row) {
-                        matrix.append(QVariant(values.mid(row * columns, columns)));
-                    }
-                    values = matrix;
-                }
+                if (data.edata.dimCount == 2) values = QVariantList{QVariant(values)};
                 rawBytes = bytes;
                 value = values;
             }

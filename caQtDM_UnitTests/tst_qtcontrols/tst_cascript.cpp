@@ -571,6 +571,32 @@ void TestCaScript::conversionsPreserveInputSnapshot()
     QVERIFY(finished.first().first().toBool());
 }
 
+void TestCaScript::numericWaveformSnapshotSurvivesUpdateAndDisconnect()
+{
+    caScript widget;
+    widget.setInputChannels({{"source", "sample"}});
+    widget.setScript(QStringLiteral(
+        "const expected = this.previous ? 3.5 : 1.25;"
+        "if (!Array.isArray(inputs.sample.value) || inputs.sample.value[0] !== expected)"
+        "    throw Error('Wrong snapshot');"
+        "if (inputs.sample.connected === Boolean(this.previous)) throw Error('Wrong connection');"
+        "inputs.sample.rawBytes.fill(0); this.previous = true;"));
+    const double first[] = {1.25, 2.5};
+    const double second[] = {3.5, 4.5};
+    const QVariantMap metadata{{"connected", true}, {"fieldtype", int(caScript::Double)}, {"valueCount", 2}};
+    QSignalSpy finished(&widget, &caScript::scriptFinished);
+    widget.updateNumericInputSample(0, metadata, QByteArray(reinterpret_cast<const char *>(first), sizeof(first)));
+    widget.executeScript();
+    widget.updateNumericInputSample(0, metadata, QByteArray(reinterpret_cast<const char *>(second), sizeof(second)));
+    widget.updateInputSample(0, {{"connected", false}, {"fieldtype", int(caScript::Char)}}, QVariant());
+    QTRY_COMPARE(finished.size(), 1);
+    QVERIFY(finished.last().first().toBool());
+
+    widget.executeScript();
+    QTRY_COMPARE(finished.size(), 2);
+    QVERIFY(finished.last().first().toBool());
+}
+
 void TestCaScript::waveformSnapshotUsesJavaScriptArray()
 {
     caScript widget;

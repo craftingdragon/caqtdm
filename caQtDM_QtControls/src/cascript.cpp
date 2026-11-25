@@ -49,6 +49,7 @@
 #include <mutex>
 #include <thread>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 namespace {
@@ -145,6 +146,57 @@ QJSValue inputValueToScript(QJSEngine *engine, const QVariant &value, ScriptCloc
         array.setProperty(i, inputValueToScript(engine, elements.at(i), deadline));
     }
     return array;
+}
+
+struct NumericInputSample
+{
+    QByteArray bytes;
+    caScript::EpicsType type;
+    int count;
+    int rows;
+    int columns;
+};
+}
+
+Q_DECLARE_METATYPE(NumericInputSample)
+
+namespace {
+template<class T>
+QJSValue numericInputArray(QJSEngine *engine, const NumericInputSample &sample,
+                           ScriptClock::time_point deadline)
+{
+    const int rowCount = sample.rows > 0 ? sample.rows : 1;
+    const int rowSize = sample.rows > 0 ? sample.columns : sample.count;
+    if (rowSize < 0 || qint64(rowCount) * rowSize != sample.count
+        || qint64(sample.count) * int(sizeof(T)) != sample.bytes.size()) return {};
+    QJSValue result = engine->newArray(sample.rows > 0 ? rowCount : rowSize);
+    const char *data = sample.bytes.constData();
+    int index = 0;
+    for (int row = 0; row < rowCount; ++row) {
+        QJSValue values = sample.rows > 0 ? engine->newArray(rowSize) : result;
+        for (int column = 0; column < rowSize; ++column, ++index) {
+            if ((index % 256) == 0 && (engine->isInterrupted() || ScriptClock::now() >= deadline))
+                return {};
+            T value;
+            std::memcpy(&value, data + qint64(index) * sizeof(T), sizeof(T));
+            values.setProperty(column, QJSValue(double(value)));
+        }
+        if (sample.rows > 0) result.setProperty(row, values);
+    }
+    return result;
+}
+
+QJSValue numericInputValue(QJSEngine *engine, const NumericInputSample &sample,
+                           ScriptClock::time_point deadline)
+{
+    switch (sample.type) {
+    case caScript::Double: return numericInputArray<double>(engine, sample, deadline);
+    case caScript::Float: return numericInputArray<float>(engine, sample, deadline);
+    case caScript::Short: return numericInputArray<qint16>(engine, sample, deadline);
+    case caScript::Long: return numericInputArray<qint32>(engine, sample, deadline);
+    case caScript::Char: return numericInputArray<quint8>(engine, sample, deadline);
+    default: return {};
+    }
 }
 
 QVariantMap scalarConversion(const QVariant &value, caScript::EpicsType type)
@@ -296,7 +348,19 @@ public slots:
             const QVariantMap channel = it.value().toMap();
             QJSValue scriptChannel = newDictionary(m_engine);
             for (auto property = channel.constBegin(); property != channel.constEnd(); ++property) {
-                scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, property.value(), deadline));
+                const QVariant &value = property.value();
+                if (property.key() == QStringLiteral("rawBytes")) {
+                    scriptChannel.setProperty(property.key(), QJSValue());
+                } else if (value.userType() == qMetaTypeId<NumericInputSample>()) {
+                    const QJSValue array = numericInputValue(m_engine, value.value<NumericInputSample>(), deadline);
+                    if (!array.isArray()) {
+                        complete(false, {}, tr("Cannot prepare numeric input %1.").arg(it.key()));
+                        return;
+                    }
+                    scriptChannel.setProperty(property.key(), array);
+                } else {
+                    scriptChannel.setProperty(property.key(), inputValueToScript(m_engine, value, deadline));
+                }
             }
             scriptInputs.setProperty(it.key(), scriptChannel);
             if (channel.contains(QStringLiteral("value"))) {
@@ -311,20 +375,19 @@ public slots:
             }
             if (!channel.contains(QStringLiteral("rawBytes"))) continue;
             const QByteArray bytes = channel.value(QStringLiteral("rawBytes")).toByteArray();
-            QJSValue array = m_engine->newArray(bytes.size());
-            for (int i = 0; i < bytes.size(); ++i) {
-                if ((i % 256) == 0 && ScriptClock::now() >= deadline) {
-                    complete(false, {}, {});
-                    return;
-                }
-                array.setProperty(i, static_cast<unsigned char>(bytes.at(i)));
-            }
-            scriptChannel.setProperty(QStringLiteral("rawBytes"), m_byteArrayConstructor.callAsConstructor({array}));
+            // The JavaScript ArrayBuffer can share storage with a QByteArray.
+            const QByteArray copy(bytes.constData(), bytes.size());
+            const QJSValue buffer = m_engine->toScriptValue(copy.isEmpty() ? QByteArray("", 0) : copy);
+            scriptChannel.setProperty(QStringLiteral("rawBytes"), m_byteArrayConstructor.callAsConstructor({buffer}));
             // Decode the original snapshot in C++, independently of the displayed value.
             scriptChannel.setProperty(QStringLiteral("fromLatin1"),
                                       m_decodedTextFunction.call({QJSValue(QString::fromLatin1(bytes))}));
             scriptChannel.setProperty(QStringLiteral("fromUtf8"),
                                       m_decodedTextFunction.call({QJSValue(QString::fromUtf8(bytes))}));
+        }
+        if (m_engine->isInterrupted() || ScriptClock::now() >= deadline) {
+            complete(false, {}, {});
+            return;
         }
         QJSValue scriptOutputs = newDictionary(m_engine);
         QJSValue keys = m_engine->newArray(outputs.size());
@@ -593,6 +656,20 @@ void caScript::updateInputSample(int index, const QVariantMap &metadata, const Q
         m_inputValues.remove(index);
         m_readyInputs.remove(index);
     }
+}
+
+void caScript::updateNumericInputSample(int index, const QVariantMap &metadata, const QByteArray &bytes)
+{
+    const bool matrix = metadata.value(QStringLiteral("dimCount")).toInt() == 2;
+    const QVariantList dimensions = metadata.value(QStringLiteral("dim")).toList();
+    const NumericInputSample sample{
+        bytes,
+        static_cast<EpicsType>(metadata.value(QStringLiteral("fieldtype")).toInt()),
+        metadata.value(QStringLiteral("valueCount")).toInt(),
+        matrix ? dimensions.value(0).toInt() : 0,
+        matrix ? dimensions.value(1).toInt() : 0
+    };
+    updateInputSample(index, metadata, QVariant::fromValue(sample), bytes);
 }
 
 void caScript::updateInputValue(int index, const QVariant &value)

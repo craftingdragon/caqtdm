@@ -111,6 +111,7 @@ public:
     void freezeChannelBindings();
     void updateInputSample(int index, const QVariantMap &metadata, const QVariant &value,
                            const QVariant &rawBytes = QVariant());
+    void updateNumericInputSample(int index, const QVariantMap &metadata, const QByteArray &bytes);
 
     static QStringList validateInputChannels(const QList<InputChannel> &inputs);
 
