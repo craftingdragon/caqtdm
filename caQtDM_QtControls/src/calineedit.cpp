@@ -764,9 +764,9 @@ QSize caLineEdit::sizeHint() const
     QFont f = font();
     f.setPointSize(10);
     QFontMetrics fm(f);
-    int w = QMETRIC_QT456_FONT_WIDTH(fm,text());
-    int h = QMETRIC_QT456_FONT_HEIGHT(fm,text());
-    QSize size(w, h);
+    // Text is cleared while a panel reconnects. Keep an empty field visible in layouts.
+    const int width = qMax(fm.averageCharWidth(), QMETRIC_QT456_FONT_WIDTH(fm, text()));
+    const QSize size(width, fm.height());
     qCDebug(caLineEditLog) << "ESimpleLabel sizeHint \"" << objectName() << "\" returning size w" << size.width() << "h" << size.height();
     return size;
 }
